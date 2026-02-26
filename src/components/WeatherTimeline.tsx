@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { RouteWeatherPoint, RouteType, ROUTE_TYPE_LABELS, ROUTE_TYPE_COLORS } from '@/types';
 import { getWeatherEmoji } from '@/lib/weather';
 import { CONGESTION_LABELS, CONGESTION_COLORS } from '@/lib/traffic';
@@ -27,18 +28,16 @@ function isHeavyRain(code: number): boolean {
 function SkeletonCards({ count, compact }: { count: number; compact?: boolean }) {
   if (compact) {
     return (
-      <div className="flex gap-0 px-3 min-w-max">
+      <div className="weather-carousel">
         {Array.from({ length: count }).map((_, i) => (
-          <div key={i} className="flex items-center">
-            <div className="flex items-center gap-1 px-1.5 py-1 rounded border glass-card">
-              <div className="skeleton w-6 h-6 rounded" />
-              <div className="flex flex-col gap-0.5">
-                <div className="skeleton w-12 h-2" />
-                <div className="skeleton w-9 h-2" />
-                <div className="skeleton w-14 h-2.5" />
+          <div key={i} className="weather-carousel-card glass-card border border-white/10">
+            <div className="flex items-center gap-1.5">
+              <div className="skeleton w-5 h-5 rounded flex-shrink-0" />
+              <div className="flex flex-col gap-1">
+                <div className="skeleton w-16 h-2.5" />
+                <div className="skeleton w-12 h-2.5" />
               </div>
             </div>
-            {i < count - 1 && <div className="w-2 h-px bg-gray-700 mx-0.5" />}
           </div>
         ))}
       </div>
@@ -74,11 +73,68 @@ function SkeletonCards({ count, compact }: { count: number; compact?: boolean })
   );
 }
 
+/** Inline carousel with horizontal scroll-snap */
+function InlineCarousel({ data }: { data: RouteWeatherPoint[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div className="weather-carousel-container">
+      <div ref={scrollRef} className="weather-carousel">
+        {data.map((item, index) => {
+          const time = new Date(item.point.estimatedArrival);
+          const isFirst = index === 0;
+          const isLast = index === data.length - 1;
+          const rain = item.weather ? isRainWeather(item.weather.weatherCode, item.weather.precipitationProbability) : false;
+          const heavy = item.weather ? isHeavyRain(item.weather.weatherCode) : false;
+          const cardClass = heavy ? 'weather-card-heavy-rain' : rain ? 'weather-card-rain' : '';
+
+          return (
+            <div
+              key={index}
+              className={`weather-carousel-card glass-card border border-white/10 ${cardClass} ${
+                isFirst ? '!bg-green-900/30 !border-green-700/40'
+                  : isLast ? '!bg-red-900/30 !border-red-700/40' : ''
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                {/* Weather emoji */}
+                <span className="text-lg leading-none flex-shrink-0">
+                  {item.weather ? getWeatherEmoji(item.weather.weatherCode) : '—'}
+                </span>
+
+                <div className="flex flex-col min-w-0">
+                  {/* Location + time */}
+                  <span className="text-[10px] text-gray-300 leading-tight truncate" title={item.locationName || ''}>
+                    {item.locationName || (isFirst ? '出発' : isLast ? '到着' : `${item.point.distanceFromStart.toFixed(0)}km`)}
+                    <span className="text-gray-500 ml-0.5">
+                      {time.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </span>
+
+                  {/* Temp + precip in one row */}
+                  {item.weather && (
+                    <span className="text-[11px] leading-tight">
+                      <span className="text-white font-bold">{item.weather.temperature.toFixed(0)}°C</span>
+                      <span className={`ml-1 ${item.weather.precipitationProbability > 50 ? 'text-blue-400' : 'text-gray-500'}`}>
+                        {item.weather.precipitationProbability}%
+                      </span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function WeatherTimeline({ data, isLoading, selectedRouteType, inline }: WeatherTimelineProps) {
   if (isLoading) {
     if (inline) {
       return (
-        <div className="overflow-hidden">
+        <div className="weather-carousel-container">
           <SkeletonCards count={5} compact />
         </div>
       );
@@ -98,62 +154,10 @@ export default function WeatherTimeline({ data, isLoading, selectedRouteType, in
 
   if (data.length === 0) return null;
 
-  // Inline compact mode for mobile top bar
+  // Inline compact mode: scroll-snap carousel for mobile
   if (inline) {
     return (
-      <div>
-        <div className="overflow-x-auto pb-1">
-          <div className="flex gap-0 px-3 min-w-max">
-            {data.map((item, index) => {
-              const time = new Date(item.point.estimatedArrival);
-              const isFirst = index === 0;
-              const isLast = index === data.length - 1;
-              const rain = item.weather ? isRainWeather(item.weather.weatherCode, item.weather.precipitationProbability) : false;
-              const heavy = item.weather ? isHeavyRain(item.weather.weatherCode) : false;
-              const cardClass = heavy ? 'weather-card-heavy-rain' : rain ? 'weather-card-rain' : '';
-
-              return (
-                <div key={index} className="flex items-center">
-                  <div className={`flex items-center gap-1 px-1.5 py-1 rounded border glass-card ${cardClass} ${
-                    isFirst ? '!bg-green-900/30 !border-green-700/40'
-                      : isLast ? '!bg-red-900/30 !border-red-700/40' : ''
-                  }`}>
-                    <span className="text-base leading-none">{item.weather ? getWeatherEmoji(item.weather.weatherCode) : '—'}</span>
-                    <div className="flex flex-col min-w-0">
-                      {item.locationName && (
-                        <span className="text-[9px] text-gray-300 leading-none truncate max-w-[5rem]" title={item.locationName}>
-                          {item.locationName}
-                        </span>
-                      )}
-                      <span className="text-[9px] text-gray-500 leading-tight">
-                        {isFirst ? '出発' : isLast ? '到着' : `${item.point.distanceFromStart.toFixed(0)}km`}
-                        {' '}{time.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      {item.weather && (
-                        <span className="text-[10px] text-white font-bold leading-tight">
-                          {item.weather.temperature.toFixed(0)}°C
-                          <span className={`ml-1 font-normal ${item.weather.precipitationProbability > 50 ? 'text-blue-400' : 'text-gray-500'}`}>
-                            {item.weather.precipitationProbability}%
-                          </span>
-                        </span>
-                      )}
-                      {item.point.congestionLevel && item.point.congestionLevel !== 'normal' && (
-                        <span className="flex items-center gap-0.5 text-[8px] leading-tight" style={{ color: CONGESTION_COLORS[item.point.congestionLevel] }}>
-                          <span className="inline-block w-1 h-1 rounded-full" style={{ backgroundColor: CONGESTION_COLORS[item.point.congestionLevel] }} />
-                          {CONGESTION_LABELS[item.point.congestionLevel]}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {index < data.length - 1 && (
-                    <div className="w-2 h-px bg-gray-600 mx-0.5" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      <InlineCarousel data={data} />
     );
   }
 

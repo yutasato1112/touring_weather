@@ -112,11 +112,15 @@ function LocationInput({
   const mapBtnColor = isMapSelectActive ? colorMap[accentColor].active : colorMap[accentColor].inactive;
   const confirmColor = colorMap[accentColor].confirm;
 
+  const iconMap = { green: '🟢', red: '🔴', purple: '🟣' };
+  const prefixIcon = iconMap[accentColor];
+
   return (
     <div ref={wrapperRef} className="relative">
       <label className="block text-xs text-gray-400 mb-1">{label}</label>
       <div className="flex gap-1.5">
         <div className="relative flex-1">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none">{prefixIcon}</span>
           <input
             type="text"
             placeholder={placeholder}
@@ -126,7 +130,7 @@ function LocationInput({
               setShowSuggestions(true);
             }}
             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-            className="w-full glass-input text-white px-3 py-2.5 rounded-lg text-sm"
+            className="w-full glass-input text-white pl-9 pr-3 py-3 rounded-xl text-sm"
           />
           {isSearching && (
             <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -138,7 +142,7 @@ function LocationInput({
         <button
           type="button"
           onClick={onToggleMapSelect}
-          className={`min-w-[44px] min-h-[44px] px-2.5 rounded-lg text-sm border transition-colors flex-shrink-0 flex items-center justify-center ${mapBtnColor}`}
+          className={`min-w-[48px] min-h-[48px] px-2.5 rounded-xl text-sm border transition-colors flex-shrink-0 flex items-center justify-center active:scale-[0.97] ${mapBtnColor}`}
           title="地図上で選択"
         >
           📍
@@ -146,12 +150,12 @@ function LocationInput({
       </div>
 
       {showSuggestions && suggestions.length > 0 && (
-        <ul className="absolute z-50 w-full mt-1 glass-panel rounded-lg shadow-xl max-h-48 overflow-y-auto">
+        <ul className="absolute z-50 w-full mt-1 glass-panel rounded-xl shadow-xl max-h-52 overflow-y-auto">
           {suggestions.map((s, i) => (
-            <li key={i}>
+            <li key={i} className={i < suggestions.length - 1 ? 'border-b border-white/5' : ''}>
               <button
                 type="button"
-                className="w-full text-left px-3 py-3 text-sm text-gray-200 hover:bg-gray-700/60 active:bg-gray-600/60 transition-colors"
+                className="w-full text-left px-3 py-3.5 text-sm text-gray-200 hover:bg-gray-700/60 active:bg-gray-600/60 transition-colors"
                 onClick={() => {
                   onSelect(s);
                   setShowSuggestions(false);
@@ -175,7 +179,7 @@ function LocationInput({
 
 // Snap point constants
 const SHEET_HEIGHT_VH = 85;
-const COLLAPSED_VISIBLE_PX = 72;
+const COLLAPSED_VISIBLE_PX = 56;
 const SNAP_POINTS = {
   collapsed: 0,
   half: 50,
@@ -511,7 +515,7 @@ export default function SearchPanel({
             type="button"
             onClick={onUseCurrentLocation}
             disabled={isLoadingLocation}
-            className="min-w-[44px] min-h-[44px] px-2.5 rounded-lg text-sm border border-gray-600/50 bg-gray-800/70 text-gray-400 hover:border-blue-500 hover:text-blue-400 transition-colors flex-shrink-0 disabled:opacity-50 flex items-center justify-center"
+            className="min-w-[48px] min-h-[48px] px-2.5 rounded-xl text-sm border border-gray-600/50 bg-gray-800/70 text-gray-400 hover:border-blue-500 hover:text-blue-400 transition-colors flex-shrink-0 disabled:opacity-50 flex items-center justify-center active:scale-[0.97]"
             title="現在地を使用"
           >
             {isLoadingLocation ? (
@@ -546,7 +550,7 @@ export default function SearchPanel({
               <button
                 type="button"
                 onClick={() => removeWaypoint(index)}
-                className="min-w-[44px] min-h-[44px] px-2.5 rounded-lg text-sm border border-gray-600/50 bg-gray-800/70 text-red-400 hover:border-red-500 active:bg-red-900/30 transition-colors flex-shrink-0 flex items-center justify-center"
+                className="min-w-[48px] min-h-[48px] px-2.5 rounded-xl text-sm border border-gray-600/50 bg-gray-800/70 text-red-400 hover:border-red-500 active:bg-red-900/30 active:scale-[0.97] transition-colors flex-shrink-0 flex items-center justify-center"
                 title="経由地を削除"
               >
                 ✕
@@ -560,7 +564,7 @@ export default function SearchPanel({
         <button
           type="button"
           onClick={addWaypoint}
-          className="flex-1 py-2.5 text-xs text-gray-400 hover:text-blue-400 active:text-blue-300 border border-dashed border-gray-600/50 hover:border-blue-500 rounded-lg transition-colors"
+          className="flex-1 py-2.5 text-xs text-gray-400 hover:text-blue-400 active:text-blue-300 border border-dashed border-gray-600/50 hover:border-blue-500 rounded-xl transition-colors"
         >
           + 経由地を追加
         </button>
@@ -576,7 +580,7 @@ export default function SearchPanel({
               waypoints: [...searchInput.waypoints].reverse(),
             });
           }}
-          className="min-w-[44px] min-h-[44px] px-3 text-xs text-gray-400 hover:text-blue-400 active:text-blue-300 border border-gray-600/50 hover:border-blue-500 rounded-lg transition-colors flex items-center justify-center"
+          className="min-w-[48px] min-h-[48px] px-3 text-lg text-gray-400 hover:text-blue-400 active:text-blue-300 active:scale-[0.95] border border-gray-600/50 hover:border-blue-500 rounded-xl transition-colors flex items-center justify-center"
           title="出発地と目的地を入れ替え"
         >
           ⇅
@@ -605,27 +609,33 @@ export default function SearchPanel({
 
       <div>
         <label className="block text-xs text-gray-400 mb-1">出発日時</label>
-        <input
-          type="datetime-local"
-          value={searchInput.departureTime}
-          onChange={(e) =>
-            setSearchInput({ ...searchInput, departureTime: e.target.value })
-          }
-          className="w-full glass-input text-white px-3 py-2.5 rounded-lg text-sm"
-        />
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none">🕐</span>
+          <input
+            type="datetime-local"
+            value={searchInput.departureTime}
+            onChange={(e) =>
+              setSearchInput({ ...searchInput, departureTime: e.target.value })
+            }
+            className="w-full glass-input text-white pl-9 pr-3 py-3 rounded-xl text-sm"
+          />
+        </div>
       </div>
 
       <div>
         <label className="block text-xs text-gray-400 mb-1">ルートの希望（任意）</label>
-        <input
-          type="text"
-          placeholder="例: 中央道経由、箱根を通りたい"
-          value={searchInput.routePreference}
-          onChange={(e) =>
-            setSearchInput({ ...searchInput, routePreference: e.target.value })
-          }
-          className="w-full glass-input text-white px-3 py-2.5 rounded-lg text-sm"
-        />
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none">📝</span>
+          <input
+            type="text"
+            placeholder="例: 中央道経由、箱根を通りたい"
+            value={searchInput.routePreference}
+            onChange={(e) =>
+              setSearchInput({ ...searchInput, routePreference: e.target.value })
+            }
+            className="w-full glass-input text-white pl-9 pr-3 py-3 rounded-xl text-sm"
+          />
+        </div>
       </div>
     </div>
   );
@@ -638,10 +648,10 @@ export default function SearchPanel({
         (!searchInput.originText && !searchInput.origin) ||
         (!searchInput.destinationText && !searchInput.destination)
       }
-      className={`w-full text-white py-3 rounded-lg font-medium text-sm transition-all ${
+      className={`w-full text-white py-3.5 rounded-xl font-semibold text-sm transition-all active:scale-[0.98] ${
         isLoading
           ? 'loading-shimmer'
-          : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-700 disabled:text-gray-500'
+          : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 active:from-blue-800 active:to-blue-700 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500'
       }`}
     >
       {isLoading ? (
@@ -652,7 +662,10 @@ export default function SearchPanel({
           </span>
         </span>
       ) : (
-        '経路と天気を検索'
+        <span className="inline-flex items-center gap-2">
+          <span>🔍</span>
+          <span>経路と天気を検索</span>
+        </span>
       )}
     </button>
   );
@@ -689,13 +702,16 @@ export default function SearchPanel({
   }
 
   // Mobile layout
+  const hasResults = !!multiRoute;
   const isCollapsed = translateY > getSnapTranslateY('half');
   const isKeyboardOpen = keyboardHeight > 0;
 
   return (
     <div
       ref={sheetRef}
-      className={`fixed bottom-0 left-0 right-0 z-[1000] glass-panel rounded-t-2xl overflow-x-hidden bottom-sheet ${isDragging || isKeyboardOpen ? 'bottom-sheet-dragging' : ''}`}
+      className={`fixed bottom-0 left-0 right-0 z-[1000] rounded-t-2xl overflow-x-hidden bottom-sheet ${
+        hasResults ? 'bottom-sheet-results' : 'glass-panel'
+      } ${isDragging || isKeyboardOpen ? 'bottom-sheet-dragging' : ''}`}
       style={
         isKeyboardOpen
           ? {
@@ -713,7 +729,7 @@ export default function SearchPanel({
       {/* ドラッグハンドル */}
       <div
         ref={handleRef}
-        className="w-full flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none"
+        className="w-full flex flex-col items-center pt-3 pb-1.5 cursor-grab active:cursor-grabbing touch-none"
         onTouchStart={handleHandleTouchStart}
         onTouchMove={handleHandleTouchMove}
         onTouchEnd={handleHandleTouchEnd}
@@ -721,7 +737,7 @@ export default function SearchPanel({
           if (isCollapsed) setTranslateY(getSnapTranslateY('half'));
         }}
       >
-        <div className="bottom-sheet-handle" />
+        <div className={`bottom-sheet-handle ${isDragging ? 'bottom-sheet-handle-active' : ''}`} />
       </div>
 
       {/* ヘッダー */}
@@ -736,7 +752,7 @@ export default function SearchPanel({
       >
         <h2 className="text-base font-bold text-white">🏍 Touring Weather</h2>
         {isCollapsed && (
-          <span className="text-xs text-gray-400">タップして展開</span>
+          <span className="text-xs text-gray-400">▲ タップして展開</span>
         )}
       </div>
 
@@ -744,7 +760,7 @@ export default function SearchPanel({
       <form
         onSubmit={handleSubmit}
         className="flex flex-col"
-        style={{ height: 'calc(100% - 72px)' }}
+        style={{ height: 'calc(100% - 64px)' }}
       >
         {/* スクロール可能なフォーム入力 — コンテンツドラッグでシート操作対応 */}
         <div

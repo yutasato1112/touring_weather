@@ -112,7 +112,7 @@ body {
 
 /* ===== Bottom Sheet ===== */
 .bottom-sheet {
-  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   will-change: transform;
 }
 
@@ -121,10 +121,11 @@ body {
 }
 
 .bottom-sheet-handle {
-  width: 36px;
-  height: 4px;
-  border-radius: 2px;
+  width: 40px;
+  height: 5px;
+  border-radius: 2.5px;
   background: rgba(156, 163, 175, 0.5);
+  transition: background 0.2s, box-shadow 0.2s;
 }
 
 /* ===== Loading Animations ===== */
@@ -240,3 +241,111 @@ body {
 .rain-wave-bars span:nth-child(2) { animation-delay: 0.15s; }
 .rain-wave-bars span:nth-child(3) { animation-delay: 0.3s; }
 .rain-wave-bars span:nth-child(4) { animation-delay: 0.45s; }
+
+/* ===== iOS-style Segmented Control ===== */
+.segmented-control {
+  display: flex;
+  position: relative;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 2px;
+}
+
+.segmented-control-indicator {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), width 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.segmented-control-tab {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 2px;
+  border-radius: 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.2s;
+  user-select: none;
+}
+
+.segmented-control-tab:active {
+  transform: scale(0.97);
+}
+
+/* ===== Weather Carousel ===== */
+.weather-carousel-container {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.weather-carousel {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 8px 6px;
+  scrollbar-width: none;
+}
+
+.weather-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.weather-carousel-card {
+  flex-shrink: 0;
+  scroll-snap-align: center;
+  border-radius: 10px;
+  padding: 5px 8px;
+  transition: transform 0.15s;
+}
+
+.weather-carousel-card:active {
+  transform: scale(0.97);
+}
+
+/* ===== Bottom Sheet Enhancements ===== */
+.bottom-sheet-results {
+  background: rgba(10, 15, 30, 1);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.bottom-sheet-handle-active {
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.3);
+  background: rgba(156, 163, 175, 0.7) !important;
+}
+
+/* ===== Fade-in-up Animation ===== */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.35s cubic-bezier(0.25, 0.8, 0.25, 1) both;
+}
+
+/* ===== Mobile Input iOS Zoom Prevention ===== */
+@media (max-width: 767px) {
+  input[type="text"],
+  input[type="datetime-local"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

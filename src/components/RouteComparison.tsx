@@ -62,69 +62,92 @@ export default function RouteComparison({
     return null;
   };
 
-  // Compact mode: horizontal tabs for mobile top bar
+  // Compact mode: iOS-style segmented control for mobile
   if (compact) {
+    // Build visible tabs list
+    const visibleTabs: { type: RouteType; isLoading?: boolean }[] = [];
+    for (const type of routeTypes) {
+      if (type === 'rain_avoid') {
+        if (isAnalyzingRain) {
+          visibleTabs.push({ type, isLoading: true });
+          continue;
+        }
+        if (!multiRoute.rain_avoid) continue;
+      }
+      const route = getRouteForTab(type);
+      if (!route) continue;
+      visibleTabs.push({ type });
+    }
+
+    const selectedIndex = visibleTabs.findIndex(t => t.type === selectedRouteType);
+    const tabCount = visibleTabs.length;
+    const indicatorWidth = tabCount > 0 ? 100 / tabCount : 0;
+    const indicatorOffset = selectedIndex >= 0 ? selectedIndex * indicatorWidth : 0;
+
     return (
-      <div className="flex gap-1 px-3 py-1.5">
-        {routeTypes.map((type) => {
-          // 雨回避: 分析中はローディング表示、未完了なら非表示
-          if (type === 'rain_avoid') {
-            if (isAnalyzingRain) {
+      <div className="px-3 py-1.5">
+        <div className="segmented-control">
+          {/* Sliding indicator */}
+          {selectedIndex >= 0 && (
+            <div
+              className="segmented-control-indicator"
+              style={{
+                width: `${indicatorWidth}%`,
+                transform: `translateX(${indicatorOffset / indicatorWidth * 100}%)`,
+              }}
+            />
+          )}
+          {visibleTabs.map(({ type, isLoading: tabLoading }) => {
+            if (tabLoading) {
               return (
-                <div key={type} className="flex-1 flex items-center gap-1.5 px-2 py-1 rounded-md opacity-60">
-                  <div className="rain-wave-bars text-purple-400" style={{ height: '10px' }}>
+                <div key={type} className="segmented-control-tab opacity-50">
+                  <div className="rain-wave-bars text-purple-400" style={{ height: '8px' }}>
                     <span /><span /><span /><span />
                   </div>
                   <span className="text-[9px] text-gray-400">分析中</span>
                 </div>
               );
             }
-            if (!multiRoute.rain_avoid) return null;
-          }
 
-          const route = getRouteForTab(type);
-          if (!route) return null;
+            const route = getRouteForTab(type);
+            if (!route) return null;
 
-          const isSelected = type === selectedRouteType;
-          const color = ROUTE_TYPE_COLORS[type];
-          const trafficType = route.baseRouteType ?? route.routeType;
-          const displayDuration = route.adjustedDuration ?? route.totalDuration;
-          const congestion = getCongestionInfo(new Date(departureTime), trafficType);
-          const badge = getRecommendationBadge(type);
+            const isSelected = type === selectedRouteType;
+            const color = ROUTE_TYPE_COLORS[type];
+            const displayDuration = route.adjustedDuration ?? route.totalDuration;
+            const trafficType = route.baseRouteType ?? route.routeType;
+            const congestion = getCongestionInfo(new Date(departureTime), trafficType);
 
-          return (
-            <button
-              key={type}
-              onClick={() => onSelectRoute(type)}
-              className={`flex-1 flex items-center gap-1.5 px-2 py-1 rounded-md transition-all ${
-                isSelected ? 'bg-white/10' : 'opacity-50'
-              }`}
-              style={{ borderBottom: isSelected ? `2px solid ${color}` : '2px solid transparent' }}
-            >
-              <div
-                className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: color }}
-              />
-              <div className="flex flex-col items-start min-w-0">
-                <span className="text-[10px] font-bold text-white truncate">
-                  {ROUTE_TYPE_LABELS[type]}
-                </span>
-                <span className="text-[9px] text-gray-400">
-                  {formatDistance(route.totalDistance)} / {formatDuration(displayDuration)}
-                </span>
-                {route.adjustedDuration && route.adjustedDuration > route.totalDuration * 1.05 && (
-                  <span className="flex items-center gap-0.5 text-[8px]" style={{ color: CONGESTION_COLORS[congestion.level] }}>
-                    <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CONGESTION_COLORS[congestion.level] }} />
-                    {CONGESTION_LABELS[congestion.level]}
+            return (
+              <button
+                key={type}
+                onClick={() => onSelectRoute(type)}
+                className={`segmented-control-tab ${isSelected ? 'opacity-100' : 'opacity-50'}`}
+              >
+                <div className="flex items-center gap-0.5">
+                  <div
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="text-[10px] font-bold text-white truncate">
+                    {ROUTE_TYPE_LABELS[type]}
                   </span>
-                )}
-                {badge && (
-                  <span className="text-[8px] text-blue-400 truncate">{badge}</span>
-                )}
-              </div>
-            </button>
-          );
-        })}
+                </div>
+                <span className="text-[11px] font-bold text-white leading-tight">
+                  {formatDuration(displayDuration)}
+                </span>
+                <span className="text-[9px] text-gray-400 leading-none">
+                  {formatDistance(route.totalDistance)}
+                  {route.adjustedDuration && route.adjustedDuration > route.totalDuration * 1.05 && (
+                    <span className="ml-0.5" style={{ color: CONGESTION_COLORS[congestion.level] }}>
+                      {CONGESTION_LABELS[congestion.level]}
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   }

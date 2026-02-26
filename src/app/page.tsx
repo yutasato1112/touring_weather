@@ -140,8 +140,9 @@ export default function Home() {
   const originMarker = useMemo(() => searchInput.origin, [searchInput.origin]);
   const destinationMarker = useMemo(() => searchInput.destination, [searchInput.destination]);
 
-  // Whether mobile has top content (route comparison or weather)
-  const hasMobileTopContent = !isDesktop && (multiRoute || weatherData.length > 0 || isLoadingWeather);
+  // Mobile: separate flags for route selector (top) and weather carousel (bottom)
+  const hasMobileRouteSelector = !isDesktop && !!multiRoute;
+  const hasMobileWeatherCarousel = !isDesktop && (weatherData.length > 0 || isLoadingWeather);
 
   return (
     <main className="w-screen h-screen relative overflow-hidden">
@@ -184,10 +185,13 @@ export default function Home() {
         routeRecommendation={routeRecommendation}
       />
 
-      {/* Mobile top bar: route comparison + weather */}
-      {hasMobileTopContent && (
-        <div className="fixed top-0 left-0 right-0 z-[999] glass-panel !rounded-none">
-          {multiRoute && (
+      {/* Mobile: Route selector + Weather carousel (top) */}
+      {(hasMobileRouteSelector || hasMobileWeatherCarousel) && (
+        <div
+          className="fixed top-0 left-0 right-0 z-[999] glass-panel !rounded-none animate-fade-in-up"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
+          {hasMobileRouteSelector && (
             <RouteComparison
               multiRoute={multiRoute}
               selectedRouteType={selectedRouteType}
@@ -198,7 +202,7 @@ export default function Home() {
               routeRecommendation={routeRecommendation}
             />
           )}
-          {(weatherData.length > 0 || isLoadingWeather) && (
+          {hasMobileWeatherCarousel && (
             <WeatherTimeline
               data={weatherData}
               isLoading={isLoadingWeather}
