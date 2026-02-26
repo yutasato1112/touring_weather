@@ -137,7 +137,8 @@ export function useRouteWeather(): UseRouteWeatherReturn {
       const rawResult = await calculateMultiRoute(
         input.origin,
         input.destination,
-        input.waypoints
+        input.waypoints,
+        input.avoidAreas
       );
 
       // 全ルートに渋滞予測を適用

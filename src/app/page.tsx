@@ -39,7 +39,7 @@ export default function Home() {
     clearError,
   } = useRouteWeather();
 
-  const { currentLocation, currentLocationLabel, isLoading: isLoadingLocation } = useCurrentLocation();
+  const { currentLocation, currentLocationLabel, isLoading: isLoadingLocation, requestLocation } = useCurrentLocation();
 
   const [searchInput, setSearchInput] = useState<SearchInput>({
     origin: null,
@@ -48,6 +48,8 @@ export default function Home() {
     destinationText: '',
     departureTime: '',
     waypoints: [],
+    routePreference: '',
+    avoidAreas: [],
   });
 
   const [mapClickMode, setMapClickMode] = useState<MapClickMode>(null);
@@ -58,6 +60,16 @@ export default function Home() {
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
+  }, []);
+
+  // Set default departure time on client mount (avoid SSR/client time mismatch)
+  useEffect(() => {
+    setSearchInput((prev) => {
+      if (prev.departureTime) return prev;
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      return { ...prev, departureTime: now.toISOString().slice(0, 16) };
+    });
   }, []);
 
   // Prefill origin with current location
@@ -71,15 +83,25 @@ export default function Home() {
     }
   }, [currentLocation, currentLocationLabel, searchInput.origin, searchInput.originText]);
 
-  const handleUseCurrentLocation = useCallback(() => {
+  const handleUseCurrentLocation = useCallback(async () => {
     if (currentLocation) {
       setSearchInput((prev) => ({
         ...prev,
         origin: currentLocation,
         originText: currentLocationLabel,
       }));
+      return;
     }
-  }, [currentLocation, currentLocationLabel]);
+    // 位置情報がなければ再取得し、結果を直接セット
+    const result = await requestLocation();
+    if (result) {
+      setSearchInput((prev) => ({
+        ...prev,
+        origin: result.position,
+        originText: result.label,
+      }));
+    }
+  }, [currentLocation, currentLocationLabel, requestLocation]);
 
   const handleMapClick = useCallback(
     (lat: number, lng: number) => {

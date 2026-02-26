@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { SearchInput, Waypoint, LatLng, MultiRouteResult, RouteType, RouteRecommendation } from '@/types';
 import { geocodeSearch, GeocodeSuggestion } from '@/lib/geocode';
+import { resolveRoutePreference } from '@/lib/routePreference';
 import RouteComparison from './RouteComparison';
 
 interface SearchPanelProps {
@@ -125,7 +126,7 @@ function LocationInput({
               setShowSuggestions(true);
             }}
             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-            className="w-full glass-input text-white px-3 py-2 rounded-lg text-sm"
+            className="w-full glass-input text-white px-3 py-2.5 rounded-lg text-sm"
           />
           {isSearching && (
             <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -137,7 +138,7 @@ function LocationInput({
         <button
           type="button"
           onClick={onToggleMapSelect}
-          className={`px-2.5 py-2 rounded-lg text-sm border transition-colors flex-shrink-0 ${mapBtnColor}`}
+          className={`min-w-[44px] min-h-[44px] px-2.5 rounded-lg text-sm border transition-colors flex-shrink-0 flex items-center justify-center ${mapBtnColor}`}
           title="地図上で選択"
         >
           📍
@@ -150,7 +151,7 @@ function LocationInput({
             <li key={i}>
               <button
                 type="button"
-                className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700/60 transition-colors"
+                className="w-full text-left px-3 py-3 text-sm text-gray-200 hover:bg-gray-700/60 active:bg-gray-600/60 transition-colors"
                 onClick={() => {
                   onSelect(s);
                   setShowSuggestions(false);
@@ -174,9 +175,9 @@ function LocationInput({
 
 // Snap point constants
 const SHEET_HEIGHT_VH = 85;
-const COLLAPSED_VISIBLE_PX = 56;
+const COLLAPSED_VISIBLE_PX = 72;
 const SNAP_POINTS = {
-  collapsed: 0,  // percentage of sheet visible (only handle)
+  collapsed: 0,
   half: 50,
   full: 85,
 };
@@ -201,16 +202,25 @@ export default function SearchPanel({
   const [isDesktop, setIsDesktop] = useState(true);
 
   // Bottom sheet state (mobile)
-  const [translateY, setTranslateY] = useState(0); // px from full-open position
+  const [translateY, setTranslateY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const dragStartY = useRef(0);
   const dragStartTranslateY = useRef(0);
   const lastTouchY = useRef(0);
   const lastTouchTime = useRef(0);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
-  const pendingDrag = useRef(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const contentDragRef = useRef<{
+    startY: number;
+    startTranslateY: number;
+    canDragDown: boolean;
+    canDragUp: boolean;
+    isDraggingSheet: boolean;
+    decided: boolean;
+  } | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [vpState, setVpState] = useState({ height: 0, offsetTop: 0 });
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 768);
@@ -239,11 +249,52 @@ export default function SearchPanel({
   const prevMultiRoute = useRef<MultiRouteResult | null>(null);
   useEffect(() => {
     if (!isDesktop && multiRoute && !prevMultiRoute.current) {
-      // Search just completed — collapse to show map + routes
       setTranslateY(getSnapTranslateY('collapsed'));
     }
     prevMultiRoute.current = multiRoute;
   }, [multiRoute, isDesktop, getSnapTranslateY]);
+
+  // キーボード検知 + フォーカス時にシート全開＆入力欄をスクロール表示
+  useEffect(() => {
+    if (isDesktop) return;
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.matches('input, select, textarea')) {
+        setTranslateY(0);
+        setTimeout(() => {
+          target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }, 350);
+      }
+    };
+
+    const vv = window.visualViewport;
+    const handleVpChange = () => {
+      if (!vv) return;
+      const kbH = window.innerHeight - vv.height;
+      setKeyboardHeight(kbH > 80 ? kbH : 0);
+      setVpState({ height: vv.height, offsetTop: vv.offsetTop });
+      if (kbH > 80) {
+        setTranslateY(0);
+      }
+    };
+
+    sheet.addEventListener('focusin', handleFocusIn);
+    if (vv) {
+      vv.addEventListener('resize', handleVpChange);
+      vv.addEventListener('scroll', handleVpChange);
+    }
+
+    return () => {
+      sheet.removeEventListener('focusin', handleFocusIn);
+      if (vv) {
+        vv.removeEventListener('resize', handleVpChange);
+        vv.removeEventListener('scroll', handleVpChange);
+      }
+    };
+  }, [isDesktop]);
 
   const snapToNearest = useCallback((currentY: number, velocityY: number) => {
     const snaps = [
@@ -252,106 +303,123 @@ export default function SearchPanel({
       { name: 'full' as const, y: getSnapTranslateY('full') },
     ];
 
-    // Fast swipe: go in swipe direction
     if (Math.abs(velocityY) > 0.5) {
       if (velocityY > 0) {
-        // Swiping down: find next lower snap
         const lower = snaps.filter(s => s.y > currentY - 20).sort((a, b) => a.y - b.y);
-        if (lower.length > 0) {
-          setTranslateY(lower[0].y);
-          return;
-        }
+        if (lower.length > 0) { setTranslateY(lower[0].y); return; }
       } else {
-        // Swiping up: find next higher snap
         const higher = snaps.filter(s => s.y < currentY + 20).sort((a, b) => b.y - a.y);
-        if (higher.length > 0) {
-          setTranslateY(higher[0].y);
-          return;
-        }
+        if (higher.length > 0) { setTranslateY(higher[0].y); return; }
       }
     }
 
-    // Slow drag: snap to nearest
     let nearest = snaps[0];
     let minDist = Math.abs(currentY - snaps[0].y);
     for (const snap of snaps) {
       const dist = Math.abs(currentY - snap.y);
-      if (dist < minDist) {
-        minDist = dist;
-        nearest = snap;
-      }
+      if (dist < minDist) { minDist = dist; nearest = snap; }
     }
     setTranslateY(nearest.y);
   }, [getSnapTranslateY]);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+  // ドラッグハンドラ — ハンドル領域専用
+  const handleHandleTouchStart = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
-    const isHandle = handleRef.current?.contains(e.target as Node);
-
-    if (isHandle) {
-      setIsDragging(true);
-      dragStartY.current = touch.clientY;
-      dragStartTranslateY.current = translateY;
-    } else {
-      // Content area: mark as pending (start drag only on downward move when scrolled to top)
-      pendingDrag.current = true;
-      dragStartY.current = touch.clientY;
-      dragStartTranslateY.current = translateY;
-    }
+    setIsDragging(true);
+    dragStartY.current = touch.clientY;
+    dragStartTranslateY.current = translateY;
     lastTouchY.current = touch.clientY;
     lastTouchTime.current = Date.now();
   }, [translateY]);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+  const handleHandleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDragging) return;
+    e.preventDefault();
     const touch = e.touches[0];
-    const deltaY = touch.clientY - dragStartY.current;
+    const newDelta = touch.clientY - dragStartY.current;
+    const newTranslateY = Math.max(0, dragStartTranslateY.current + newDelta);
+    const maxTranslate = getSnapTranslateY('collapsed');
+    setTranslateY(Math.min(newTranslateY, maxTranslate));
+    lastTouchY.current = touch.clientY;
+    lastTouchTime.current = Date.now();
+  }, [isDragging, getSnapTranslateY]);
 
-    if (pendingDrag.current && !isDragging) {
-      // Check if scrolled to top and dragging down
-      const scrollTop = contentRef.current?.scrollTop ?? 0;
-      if (deltaY > 5 && scrollTop <= 0) {
-        setIsDragging(true);
-        pendingDrag.current = false;
-        dragStartY.current = touch.clientY;
-        dragStartTranslateY.current = translateY;
-      } else if (deltaY < -5) {
-        // Scrolling up in content, don't start drag
-        pendingDrag.current = false;
+  const handleHandleTouchEnd = useCallback(() => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    const velocityY = (lastTouchY.current - dragStartY.current) / Math.max(1, (Date.now() - lastTouchTime.current)) * 1000;
+    snapToNearest(translateY, velocityY / 1000);
+  }, [isDragging, translateY, snapToNearest]);
+
+  // --- コンテンツエリアのタッチ: スクロール + シートドラッグ ---
+  const handleContentTouchStart = useCallback((e: React.TouchEvent) => {
+    const content = contentRef.current;
+    if (!content) return;
+    // インタラクティブ要素上ではドラッグしない（入力・ボタン操作を優先）
+    const target = e.target as HTMLElement;
+    if (target.closest('input, select, textarea, button, a')) {
+      contentDragRef.current = null;
+      return;
+    }
+    const scrollTop = content.scrollTop;
+    const contentOverflows = content.scrollHeight > content.clientHeight + 1;
+    contentDragRef.current = {
+      startY: e.touches[0].clientY,
+      startTranslateY: translateY,
+      canDragDown: scrollTop <= 0,
+      canDragUp: !contentOverflows,
+      isDraggingSheet: false,
+      decided: false,
+    };
+    lastTouchY.current = e.touches[0].clientY;
+    lastTouchTime.current = Date.now();
+  }, [translateY]);
+
+  const handleContentTouchMove = useCallback((e: React.TouchEvent) => {
+    const state = contentDragRef.current;
+    if (!state) return;
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - state.startY;
+
+    if (!state.decided && Math.abs(deltaY) > 8) {
+      state.decided = true;
+      if (state.canDragDown && deltaY > 0) {
+        state.isDraggingSheet = true;
+      } else if (state.canDragUp && deltaY < 0) {
+        state.isDraggingSheet = true;
       }
     }
 
-    if (isDragging) {
+    if (state.isDraggingSheet) {
       e.preventDefault();
-      const newDelta = touch.clientY - dragStartY.current;
-      const newTranslateY = Math.max(0, dragStartTranslateY.current + newDelta);
+      const newTranslateY = Math.max(0, state.startTranslateY + deltaY);
       const maxTranslate = getSnapTranslateY('collapsed');
       setTranslateY(Math.min(newTranslateY, maxTranslate));
+      setIsDragging(true);
+      lastTouchY.current = currentY;
+      lastTouchTime.current = Date.now();
     }
+  }, [getSnapTranslateY]);
 
-    lastTouchY.current = touch.clientY;
-    lastTouchTime.current = Date.now();
-  }, [isDragging, translateY, getSnapTranslateY]);
-
-  const handleTouchEnd = useCallback(() => {
-    pendingDrag.current = false;
-    if (!isDragging) return;
-
-    setIsDragging(false);
-    const velocityY = (lastTouchY.current - dragStartY.current) / Math.max(1, (Date.now() - lastTouchTime.current)) * 1000;
-    // Normalize velocity to reasonable range
-    const normalizedVelocity = velocityY / 1000;
-    snapToNearest(translateY, normalizedVelocity);
-  }, [isDragging, translateY, snapToNearest]);
-
-  const getDefaultDepartureTime = () => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    return now.toISOString().slice(0, 16);
-  };
+  const handleContentTouchEnd = useCallback(() => {
+    const state = contentDragRef.current;
+    if (!state) return;
+    if (state.isDraggingSheet) {
+      setIsDragging(false);
+      const elapsed = Date.now() - lastTouchTime.current;
+      const velocityY = (lastTouchY.current - state.startY) / Math.max(1, elapsed) * 1000;
+      snapToNearest(translateY, velocityY / 1000);
+    }
+    contentDragRef.current = null;
+  }, [translateY, snapToNearest]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
 
       let input = { ...searchInput };
 
@@ -381,6 +449,16 @@ export default function SearchPanel({
         input = { ...input, departureTime: new Date().toISOString() };
       }
 
+      if (input.routePreference.trim() && input.origin && input.destination) {
+        const resolved = await resolveRoutePreference(
+          input.routePreference,
+          input.origin,
+          input.destination,
+          input.waypoints
+        );
+        input = { ...input, waypoints: resolved.waypoints, avoidAreas: resolved.avoidAreas };
+      }
+
       setSearchInput(input);
       onSearch(input);
     },
@@ -407,8 +485,9 @@ export default function SearchPanel({
     setSearchInput({ ...searchInput, waypoints: updated });
   };
 
-  const formContent = (
-    <form onSubmit={handleSubmit} className="space-y-3">
+  // --- フォーム入力部分（検索ボタンを除く） ---
+  const formInputs = (
+    <div className="space-y-3">
       <LocationInput
         label="出発地"
         placeholder="東京駅、渋谷、住所..."
@@ -432,7 +511,7 @@ export default function SearchPanel({
             type="button"
             onClick={onUseCurrentLocation}
             disabled={isLoadingLocation}
-            className="px-2.5 py-2 rounded-lg text-sm border border-gray-600/50 bg-gray-800/70 text-gray-400 hover:border-blue-500 hover:text-blue-400 transition-colors flex-shrink-0 disabled:opacity-50"
+            className="min-w-[44px] min-h-[44px] px-2.5 rounded-lg text-sm border border-gray-600/50 bg-gray-800/70 text-gray-400 hover:border-blue-500 hover:text-blue-400 transition-colors flex-shrink-0 disabled:opacity-50 flex items-center justify-center"
             title="現在地を使用"
           >
             {isLoadingLocation ? (
@@ -444,7 +523,6 @@ export default function SearchPanel({
         }
       />
 
-      {/* Waypoints */}
       {searchInput.waypoints.map((wp, index) => (
         <div key={index} className="relative">
           <LocationInput
@@ -468,7 +546,7 @@ export default function SearchPanel({
               <button
                 type="button"
                 onClick={() => removeWaypoint(index)}
-                className="px-2.5 py-2 rounded-lg text-sm border border-gray-600/50 bg-gray-800/70 text-red-400 hover:border-red-500 transition-colors flex-shrink-0"
+                className="min-w-[44px] min-h-[44px] px-2.5 rounded-lg text-sm border border-gray-600/50 bg-gray-800/70 text-red-400 hover:border-red-500 active:bg-red-900/30 transition-colors flex-shrink-0 flex items-center justify-center"
                 title="経由地を削除"
               >
                 ✕
@@ -478,13 +556,32 @@ export default function SearchPanel({
         </div>
       ))}
 
-      <button
-        type="button"
-        onClick={addWaypoint}
-        className="w-full py-1.5 text-xs text-gray-400 hover:text-blue-400 border border-dashed border-gray-600/50 hover:border-blue-500 rounded-lg transition-colors"
-      >
-        + 経由地を追加
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={addWaypoint}
+          className="flex-1 py-2.5 text-xs text-gray-400 hover:text-blue-400 active:text-blue-300 border border-dashed border-gray-600/50 hover:border-blue-500 rounded-lg transition-colors"
+        >
+          + 経由地を追加
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setSearchInput({
+              ...searchInput,
+              origin: searchInput.destination,
+              originText: searchInput.destinationText,
+              destination: searchInput.origin,
+              destinationText: searchInput.originText,
+              waypoints: [...searchInput.waypoints].reverse(),
+            });
+          }}
+          className="min-w-[44px] min-h-[44px] px-3 text-xs text-gray-400 hover:text-blue-400 active:text-blue-300 border border-gray-600/50 hover:border-blue-500 rounded-lg transition-colors flex items-center justify-center"
+          title="出発地と目的地を入れ替え"
+        >
+          ⇅
+        </button>
+      </div>
 
       <LocationInput
         label="目的地"
@@ -510,29 +607,44 @@ export default function SearchPanel({
         <label className="block text-xs text-gray-400 mb-1">出発日時</label>
         <input
           type="datetime-local"
-          value={searchInput.departureTime || getDefaultDepartureTime()}
+          value={searchInput.departureTime}
           onChange={(e) =>
             setSearchInput({ ...searchInput, departureTime: e.target.value })
           }
-          className="w-full glass-input text-white px-3 py-2 rounded-lg text-sm"
+          className="w-full glass-input text-white px-3 py-2.5 rounded-lg text-sm"
         />
       </div>
 
-      <button
-        type="submit"
-        disabled={
-          isLoading ||
-          (!searchInput.originText && !searchInput.origin) ||
-          (!searchInput.destinationText && !searchInput.destination)
-        }
-        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white py-2.5 rounded-lg font-medium text-sm transition-colors"
-      >
-        {isLoading ? '検索中...' : '経路と天気を検索'}
-      </button>
-    </form>
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">ルートの希望（任意）</label>
+        <input
+          type="text"
+          placeholder="例: 中央道経由、箱根を通りたい"
+          value={searchInput.routePreference}
+          onChange={(e) =>
+            setSearchInput({ ...searchInput, routePreference: e.target.value })
+          }
+          className="w-full glass-input text-white px-3 py-2.5 rounded-lg text-sm"
+        />
+      </div>
+    </div>
   );
 
-  // Desktop layout: top-left panel with scroll
+  const submitButton = (
+    <button
+      type="submit"
+      disabled={
+        isLoading ||
+        (!searchInput.originText && !searchInput.origin) ||
+        (!searchInput.destinationText && !searchInput.destination)
+      }
+      className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-700 disabled:text-gray-500 text-white py-3 rounded-lg font-medium text-sm transition-colors"
+    >
+      {isLoading ? '検索中...' : '経路と天気を検索'}
+    </button>
+  );
+
+  // Desktop layout
   if (isDesktop) {
     return (
       <div className="absolute top-4 left-4 z-[1000] w-80 max-w-[calc(100vw-2rem)]">
@@ -541,9 +653,11 @@ export default function SearchPanel({
             <h2 className="text-lg font-bold">🏍 Touring Weather</h2>
           </div>
           <div className="px-4 pb-4">
-            {formContent}
+            <form onSubmit={handleSubmit} className="space-y-3">
+              {formInputs}
+              <div className="pt-1">{submitButton}</div>
+            </form>
           </div>
-          {/* Route comparison below form */}
           {multiRoute && (
             <div className="px-4 pb-4">
               <RouteComparison
@@ -561,40 +675,82 @@ export default function SearchPanel({
     );
   }
 
-  // Mobile layout: swipe bottom sheet
+  // Mobile layout
+  const isCollapsed = translateY > getSnapTranslateY('half');
+  const isKeyboardOpen = keyboardHeight > 0;
+
   return (
     <div
       ref={sheetRef}
-      className={`fixed bottom-0 left-0 right-0 z-[1000] glass-panel rounded-t-2xl bottom-sheet ${isDragging ? 'bottom-sheet-dragging' : ''}`}
-      style={{
-        height: `${SHEET_HEIGHT_VH}vh`,
-        transform: `translateY(${translateY}px)`,
-      }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      className={`fixed bottom-0 left-0 right-0 z-[1000] glass-panel rounded-t-2xl overflow-x-hidden bottom-sheet ${isDragging || isKeyboardOpen ? 'bottom-sheet-dragging' : ''}`}
+      style={
+        isKeyboardOpen
+          ? {
+              top: `${vpState.offsetTop}px`,
+              bottom: 'auto' as const,
+              height: `${vpState.height}px`,
+            }
+          : {
+              height: `${SHEET_HEIGHT_VH}vh`,
+              transform: `translateY(${translateY}px)`,
+              paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+            }
+      }
     >
-      {/* Drag handle */}
+      {/* ドラッグハンドル */}
       <div
         ref={handleRef}
-        className="w-full flex justify-center py-3 cursor-grab active:cursor-grabbing"
+        className="w-full flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none"
+        onTouchStart={handleHandleTouchStart}
+        onTouchMove={handleHandleTouchMove}
+        onTouchEnd={handleHandleTouchEnd}
+        onClick={() => {
+          if (isCollapsed) setTranslateY(getSnapTranslateY('half'));
+        }}
       >
         <div className="bottom-sheet-handle" />
       </div>
 
-      {/* Header (always visible) */}
-      <div className="px-4 pb-2 flex items-center justify-between">
+      {/* ヘッダー */}
+      <div
+        className="px-4 pb-2 flex items-center justify-between touch-none"
+        onTouchStart={handleHandleTouchStart}
+        onTouchMove={handleHandleTouchMove}
+        onTouchEnd={handleHandleTouchEnd}
+        onClick={() => {
+          if (isCollapsed) setTranslateY(getSnapTranslateY('half'));
+        }}
+      >
         <h2 className="text-base font-bold text-white">🏍 Touring Weather</h2>
+        {isCollapsed && (
+          <span className="text-xs text-gray-400">タップして展開</span>
+        )}
       </div>
 
-      {/* Scrollable content */}
-      <div
-        ref={contentRef}
-        className="overflow-y-auto px-4 pb-4"
-        style={{ maxHeight: 'calc(100% - 72px)' }}
+      {/* フォーム: スクロール領域 + 固定ボタン */}
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-col"
+        style={{ height: 'calc(100% - 72px)' }}
       >
-        {formContent}
-      </div>
+        {/* スクロール可能なフォーム入力 — コンテンツドラッグでシート操作対応 */}
+        <div
+          ref={contentRef}
+          className="flex-1 overflow-y-scroll overscroll-contain px-4"
+          style={{ touchAction: 'pan-y' }}
+          onTouchStart={handleContentTouchStart}
+          onTouchMove={handleContentTouchMove}
+          onTouchEnd={handleContentTouchEnd}
+        >
+          {formInputs}
+          <div className="h-3" />
+        </div>
+
+        {/* 検索ボタン — 固定 */}
+        <div className="flex-shrink-0 px-4 py-3 border-t border-white/10 touch-none">
+          {submitButton}
+        </div>
+      </form>
     </div>
   );
 }

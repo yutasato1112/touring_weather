@@ -107,6 +107,13 @@ export interface RouteRecommendation {
   no_highway: BaseRouteType;
 }
 
+/** 回避エリア（ルート要望の否定表現から生成） */
+export interface AvoidArea {
+  center: LatLng;
+  radiusKm: number;
+  label: string;
+}
+
 /** 渋滞区間セグメント（地図上の色分け用） */
 export interface CongestionSegment {
   /** セグメントの座標列 [lat, lng][] (Leaflet形式) */
@@ -123,4 +130,8 @@ export interface SearchInput {
   destinationText: string;
   departureTime: string;
   waypoints: Waypoint[];
+  /** 自然言語ルート要望（例: "中央道経由", "箱根を通りたい"） */
+  routePreference: string;
+  /** 回避エリア（routePreference の否定表現から自動生成） */
+  avoidAreas: AvoidArea[];
 }

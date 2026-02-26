@@ -1,5 +1,6 @@
-import { LatLng, RouteInfo, RouteInfoWithType, RoutePoint, RouteType, BaseRouteType, MultiRouteResult, Waypoint, CongestionSegment, CongestionLevel, RouteRecommendation } from '@/types';
+import { LatLng, RouteInfo, RouteInfoWithType, RoutePoint, RouteType, BaseRouteType, MultiRouteResult, Waypoint, CongestionSegment, CongestionLevel, RouteRecommendation, AvoidArea } from '@/types';
 import { getCongestionInfo, calculateAdjustedDuration } from '@/lib/traffic';
+import { generateCirclePolygon } from '@/lib/routePreference';
 
 /** ORS POST APIのルート種別設定（no_highway, scenic のみ使用） */
 const ROUTE_TYPE_CONFIG: Record<'no_highway' | 'scenic', {
@@ -117,7 +118,8 @@ function calculateElevationGain(altitudes: number[]): number {
  */
 async function fetchORSRoute(
   coordinates: [number, number][],
-  routeType: 'no_highway' | 'scenic'
+  routeType: 'no_highway' | 'scenic',
+  avoidPolygons?: [number, number][][]
 ): Promise<RouteInfoWithType> {
   const config = ROUTE_TYPE_CONFIG[routeType];
 
@@ -129,6 +131,7 @@ async function fetchORSRoute(
       preference: config.preference,
       avoidFeatures: config.avoidFeatures,
       elevation: true,
+      ...(avoidPolygons && avoidPolygons.length > 0 && { avoidPolygons }),
     }),
   });
 
@@ -176,7 +179,8 @@ async function fetchORSRoute(
 async function fetchValhallaFastestRoute(
   origin: LatLng,
   destination: LatLng,
-  waypoints: Waypoint[]
+  waypoints: Waypoint[],
+  avoidPolygons?: [number, number][][]
 ): Promise<RouteInfoWithType> {
   const response = await fetch('/api/valhalla-route', {
     method: 'POST',
@@ -187,6 +191,7 @@ async function fetchValhallaFastestRoute(
       waypoints: waypoints.map((wp) => ({ lat: wp.position.lat, lng: wp.position.lng })),
       useHighways: 1.0,
       useTolls: 1.0,
+      ...(avoidPolygons && avoidPolygons.length > 0 && { excludePolygons: avoidPolygons }),
     }),
   });
 
@@ -216,10 +221,16 @@ export async function calculateRoute(
   origin: LatLng,
   destination: LatLng,
   waypoints: Waypoint[] = [],
-  routeType: BaseRouteType = 'fastest'
+  routeType: BaseRouteType = 'fastest',
+  avoidAreas: AvoidArea[] = []
 ): Promise<RouteInfoWithType> {
+  // AvoidArea → ポリゴン座標に変換
+  const avoidPolygons = avoidAreas.length > 0
+    ? avoidAreas.map((a) => generateCirclePolygon(a.center, a.radiusKm))
+    : undefined;
+
   if (routeType === 'fastest') {
-    return fetchValhallaFastestRoute(origin, destination, waypoints);
+    return fetchValhallaFastestRoute(origin, destination, waypoints, avoidPolygons);
   }
 
   const coordinates: [number, number][] = [
@@ -228,7 +239,7 @@ export async function calculateRoute(
     [destination.lng, destination.lat],
   ];
 
-  return fetchORSRoute(coordinates, routeType);
+  return fetchORSRoute(coordinates, routeType, avoidPolygons);
 }
 
 /**
@@ -237,12 +248,13 @@ export async function calculateRoute(
 export async function calculateMultiRoute(
   origin: LatLng,
   destination: LatLng,
-  waypoints: Waypoint[] = []
+  waypoints: Waypoint[] = [],
+  avoidAreas: AvoidArea[] = []
 ): Promise<MultiRouteResult> {
   const routeTypes: BaseRouteType[] = ['fastest', 'no_highway', 'scenic'];
 
   const results = await Promise.allSettled(
-    routeTypes.map((type) => calculateRoute(origin, destination, waypoints, type))
+    routeTypes.map((type) => calculateRoute(origin, destination, waypoints, type, avoidAreas))
   );
 
   const multiRoute: MultiRouteResult = {

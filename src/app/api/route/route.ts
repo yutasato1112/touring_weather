@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
     avoidFeatures?: string[];
     elevation?: boolean;
     extraInfo?: string[];
+    avoidPolygons?: [number, number][][];
   };
   try {
     body = await request.json();
@@ -43,6 +44,13 @@ export async function POST(request: NextRequest) {
 
     if (body.avoidFeatures && body.avoidFeatures.length > 0) {
       options.avoid_features = body.avoidFeatures;
+    }
+
+    if (body.avoidPolygons && body.avoidPolygons.length > 0) {
+      options.avoid_polygons = {
+        type: 'MultiPolygon',
+        coordinates: body.avoidPolygons.map((ring) => [ring]),
+      };
     }
 
     if (Object.keys(options).length > 0) {

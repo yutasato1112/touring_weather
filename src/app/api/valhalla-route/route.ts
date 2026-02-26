@@ -6,6 +6,7 @@ interface ValhallaRouteRequest {
   waypoints?: { lat: number; lng: number }[];
   useHighways?: number;  // 0.0 - 1.0
   useTolls?: number;     // 0.0 - 1.0
+  excludePolygons?: [number, number][][]; // [lng, lat][][] 回避ポリゴン
 }
 
 /**
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     locations.push({ lat: body.destination.lat, lon: body.destination.lng });
 
-    const valhallaBody = {
+    const valhallaBody: Record<string, unknown> = {
       locations,
       costing: 'auto',
       costing_options: {
@@ -97,6 +98,13 @@ export async function POST(request: NextRequest) {
       directions_options: { units: 'km' },
       shape_format: 'polyline6',
     };
+
+    // 回避ポリゴン: [lng, lat][][] → [{lat, lon}][] (Valhalla形式)
+    if (body.excludePolygons && body.excludePolygons.length > 0) {
+      valhallaBody.exclude_polygons = body.excludePolygons.map((ring) =>
+        ring.map(([lng, lat]) => ({ lat, lon: lng }))
+      );
+    }
 
     const response = await fetch(VALHALLA_ENDPOINT, {
       method: 'POST',
