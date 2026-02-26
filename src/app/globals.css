@@ -340,12 +340,19 @@ body {
   animation: fade-in-up 0.35s cubic-bezier(0.25, 0.8, 0.25, 1) both;
 }
 
-/* ===== Mobile Input iOS Zoom Prevention ===== */
+/* ===== Mobile: prevent zoom on UI overlays ===== */
 @media (max-width: 767px) {
   input[type="text"],
   input[type="datetime-local"],
   select,
   textarea {
     font-size: 16px !important;
+  }
+
+  .glass-panel,
+  .bottom-sheet-results,
+  .weather-carousel-container,
+  .segmented-control {
+    touch-action: pan-x pan-y;
   }
 }
