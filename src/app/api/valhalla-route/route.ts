@@ -6,6 +6,7 @@ interface ValhallaRouteRequest {
   waypoints?: { lat: number; lng: number }[];
   useHighways?: number;  // 0.0 - 1.0
   useTolls?: number;     // 0.0 - 1.0
+  shortest?: boolean;    // true で最短距離ルート
   excludePolygons?: [number, number][][]; // [lng, lat][][] 回避ポリゴン
 }
 
@@ -93,6 +94,7 @@ export async function POST(request: NextRequest) {
         auto: {
           use_highways: body.useHighways ?? 1.0,
           use_tolls: body.useTolls ?? 1.0,
+          ...(body.shortest && { shortest: true }),
         },
       },
       directions_options: { units: 'km' },

@@ -2,186 +2,34 @@ import { LatLng, RouteInfo, RouteInfoWithType, RoutePoint, RouteType, BaseRouteT
 import { getCongestionInfo, calculateAdjustedDuration } from '@/lib/traffic';
 import { generateCirclePolygon } from '@/lib/routePreference';
 
-/** ORS POST APIのルート種別設定（no_highway, scenic のみ使用） */
-const ROUTE_TYPE_CONFIG: Record<'no_highway' | 'scenic', {
-  preference: string;
-  avoidFeatures?: string[];
+/** Valhalla ルート種別設定 */
+const VALHALLA_ROUTE_CONFIG: Record<BaseRouteType, {
+  useHighways: number;
+  useTolls: number;
+  shortest?: boolean;
 }> = {
-  no_highway: { preference: 'fastest', avoidFeatures: ['highways', 'tollways'] },
-  scenic: { preference: 'shortest', avoidFeatures: ['highways', 'tollways'] },
+  fastest: { useHighways: 1, useTolls: 1 },
+  no_highway: { useHighways: 0, useTolls: 0 },
+  scenic: { useHighways: 0, useTolls: 0, shortest: true },
 };
 
 /**
- * Encoded polyline をデコードする (ORS POST APIのgeometry形式)
- * Google Encoded Polyline Algorithm Format (2D: lat, lng)
- */
-function decodePolyline(encoded: string): [number, number][] {
-  const points: [number, number][] = [];
-  let index = 0;
-  let lat = 0;
-  let lng = 0;
-
-  while (index < encoded.length) {
-    let shift = 0;
-    let result = 0;
-    let byte: number;
-
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20);
-    lat += result & 1 ? ~(result >> 1) : result >> 1;
-
-    shift = 0;
-    result = 0;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20);
-    lng += result & 1 ? ~(result >> 1) : result >> 1;
-
-    // ORS returns [lng, lat] order in its geometry
-    points.push([lng / 1e5, lat / 1e5]);
-  }
-
-  return points;
-}
-
-/**
- * 3D Encoded polyline をデコードする (elevation有効時: lat, lng, alt)
- */
-function decodePolyline3D(encoded: string): { coords: [number, number][]; altitudes: number[] } {
-  const coords: [number, number][] = [];
-  const altitudes: number[] = [];
-  let index = 0;
-  let lat = 0;
-  let lng = 0;
-  let alt = 0;
-
-  while (index < encoded.length) {
-    // Decode lat
-    let shift = 0;
-    let result = 0;
-    let byte: number;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20);
-    lat += result & 1 ? ~(result >> 1) : result >> 1;
-
-    // Decode lng
-    shift = 0;
-    result = 0;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20);
-    lng += result & 1 ? ~(result >> 1) : result >> 1;
-
-    // Decode altitude
-    shift = 0;
-    result = 0;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20);
-    alt += result & 1 ? ~(result >> 1) : result >> 1;
-
-    coords.push([lng / 1e5, lat / 1e5]);
-    altitudes.push(alt / 100); // ORS encodes altitude in centimeters
-  }
-
-  return { coords, altitudes };
-}
-
-/**
- * 標高データから累積上昇量を計算する
- */
-function calculateElevationGain(altitudes: number[]): number {
-  let gain = 0;
-  for (let i = 1; i < altitudes.length; i++) {
-    const diff = altitudes[i] - altitudes[i - 1];
-    if (diff > 0) {
-      gain += diff;
-    }
-  }
-  return Math.round(gain);
-}
-
-/**
- * ORS API を呼び出してルートを取得する内部ヘルパー
- */
-async function fetchORSRoute(
-  coordinates: [number, number][],
-  routeType: 'no_highway' | 'scenic',
-  avoidPolygons?: [number, number][][]
-): Promise<RouteInfoWithType> {
-  const config = ROUTE_TYPE_CONFIG[routeType];
-
-  const response = await fetch('/api/route', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      coordinates,
-      preference: config.preference,
-      avoidFeatures: config.avoidFeatures,
-      elevation: true,
-      ...(avoidPolygons && avoidPolygons.length > 0 && { avoidPolygons }),
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `経路の計算に失敗しました (${response.status})`);
-  }
-
-  const data = await response.json();
-  const route = data.routes[0];
-
-  // We always request elevation, so try 3D decode first with validation fallback
-  let geometry: [number, number][];
-  let elevationGain: number | undefined;
-
-  const decoded3D = decodePolyline3D(route.geometry);
-  const sampleCoords = decoded3D.coords.slice(0, Math.min(5, decoded3D.coords.length));
-  const coordsValid = decoded3D.coords.length >= 2 &&
-    sampleCoords.every(([lng, lat]) => lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180);
-
-  if (coordsValid) {
-    geometry = decoded3D.coords;
-    elevationGain = calculateElevationGain(decoded3D.altitudes);
-  } else {
-    geometry = decodePolyline(route.geometry);
-  }
-
-  return {
-    geometry,
-    totalDistance: route.summary.distance / 1000,
-    totalDuration: route.summary.duration,
-    elevationGain,
-    routeType,
-  };
-}
-
-/**
- * Valhalla (FOSSGIS公開サーバー) で最速ルートを取得する
+ * Valhalla (FOSSGIS公開サーバー) で経路を取得する
  *
- * Valhalla の速度モデルは日本の道路制限速度を正確に反映するため、
- * NEXCO高速道路（100-120km/h）を都市高速（50-80km/h）より自然に優先する。
- * 特別な迂回ロジック不要で、圏央道等のNEXCOルートが選ばれる。
+ * 全ルート種別に対応:
+ * - fastest: use_highways=1, use_tolls=1（NEXCO高速を自然に優先）
+ * - no_highway: use_highways=0, use_tolls=0（一般道のみ）
+ * - scenic: use_highways=0, use_tolls=0, shortest=true（最短距離＝ワインディング向き）
  */
-
-async function fetchValhallaFastestRoute(
+async function fetchValhallaRoute(
   origin: LatLng,
   destination: LatLng,
   waypoints: Waypoint[],
+  routeType: BaseRouteType,
   avoidPolygons?: [number, number][][]
 ): Promise<RouteInfoWithType> {
+  const config = VALHALLA_ROUTE_CONFIG[routeType];
+
   const response = await fetch('/api/valhalla-route', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -189,8 +37,9 @@ async function fetchValhallaFastestRoute(
       origin: { lat: origin.lat, lng: origin.lng },
       destination: { lat: destination.lat, lng: destination.lng },
       waypoints: waypoints.map((wp) => ({ lat: wp.position.lat, lng: wp.position.lng })),
-      useHighways: 1.0,
-      useTolls: 1.0,
+      useHighways: config.useHighways,
+      useTolls: config.useTolls,
+      ...(config.shortest && { shortest: true }),
       ...(avoidPolygons && avoidPolygons.length > 0 && { excludePolygons: avoidPolygons }),
     }),
   });
@@ -203,19 +52,15 @@ async function fetchValhallaFastestRoute(
   const data = await response.json();
 
   return {
-    geometry: data.geometry,           // [lng, lat][] (ORS互換)
+    geometry: data.geometry,           // [lng, lat][]
     totalDistance: data.totalDistance,   // km
     totalDuration: data.totalDuration,  // seconds
-    routeType: 'fastest',
+    routeType,
   };
 }
 
 /**
- * サーバーサイドAPI経由で経路を計算する
- *
- * fastest: Valhalla（NEXCO高速道路を自然に優先）
- * no_highway: ORS fastest + 高速回避
- * scenic: ORS shortest + 高速回避
+ * サーバーサイドAPI経由で経路を計算する（全ルート種別 Valhalla 使用）
  */
 export async function calculateRoute(
   origin: LatLng,
@@ -229,17 +74,7 @@ export async function calculateRoute(
     ? avoidAreas.map((a) => generateCirclePolygon(a.center, a.radiusKm))
     : undefined;
 
-  if (routeType === 'fastest') {
-    return fetchValhallaFastestRoute(origin, destination, waypoints, avoidPolygons);
-  }
-
-  const coordinates: [number, number][] = [
-    [origin.lng, origin.lat],
-    ...waypoints.map((wp) => [wp.position.lng, wp.position.lat] as [number, number]),
-    [destination.lng, destination.lat],
-  ];
-
-  return fetchORSRoute(coordinates, routeType, avoidPolygons);
+  return fetchValhallaRoute(origin, destination, waypoints, routeType, avoidPolygons);
 }
 
 /**
