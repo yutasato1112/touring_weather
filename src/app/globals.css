@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --route-fastest: #3b82f6;
+  --route-no-highway: #10b981;
+  --route-scenic: #f59e0b;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Leaflet overrides */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+/* Hide Leaflet attribution on small screens */
+@media (max-width: 640px) {
+  .leaflet-control-attribution {
+    font-size: 8px;
+  }
+}
+
+/* Custom scrollbar for timeline */
+.overflow-x-auto::-webkit-scrollbar {
+  height: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 2px;
+}
+
+/* ===== Glass Design System ===== */
+/* Dark frosted glass: readable text + transparent enough to feel light */
+.glass-panel {
+  background: rgba(10, 15, 30, 0.78);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+}
+
+.glass-card {
+  background: rgba(20, 25, 45, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-input {
+  background: rgba(15, 20, 35, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.glass-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+  outline: none;
+}
+
+/* Weather timeline bar (bottom of screen on desktop) */
+.weather-timeline-bar {
+  background: rgba(10, 15, 30, 0.82);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.25);
+}
+
+/* ===== Rain Weather Cards ===== */
+.weather-card-rain {
+  background: rgba(59, 130, 246, 0.15) !important;
+  border-color: rgba(59, 130, 246, 0.4) !important;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
+}
+
+.weather-card-heavy-rain {
+  background: rgba(59, 130, 246, 0.2) !important;
+  border-color: rgba(59, 130, 246, 0.5) !important;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.3);
+  animation: rain-pulse 2s ease-in-out infinite;
+}
+
+@keyframes rain-pulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(59, 130, 246, 0.45);
+  }
+}
+
+/* ===== Bottom Sheet ===== */
+.bottom-sheet {
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+}
+
+.bottom-sheet-dragging {
+  transition: none !important;
+}
+
+.bottom-sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(156, 163, 175, 0.5);
+}
