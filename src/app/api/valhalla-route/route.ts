@@ -108,50 +108,70 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await fetch(VALHALLA_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'TouringWeather/1.0',
-      },
-      body: JSON.stringify(valhallaBody),
-      signal: AbortSignal.timeout(15000),
-    });
+    // 429対策: 同一サーバーでリトライ（最大3回、間隔を空ける）
+    const requestBody = JSON.stringify(valhallaBody);
 
-    if (!response.ok) {
-      const text = await response.text();
-      return NextResponse.json(
-        { error: `Valhalla API error: ${response.status} ${text}` },
-        { status: 502 },
-      );
-    }
-
-    const data = await response.json();
-    const trip = data.trip;
-
-    if (!trip || !trip.legs || trip.legs.length === 0) {
-      return NextResponse.json({ error: 'No route found' }, { status: 404 });
-    }
-
-    // Decode and merge all leg shapes into single geometry
-    const geometry: [number, number][] = [];
-    for (let i = 0; i < trip.legs.length; i++) {
-      const legPoints = decodePolyline6(trip.legs[i].shape);
-      for (let j = 0; j < legPoints.length; j++) {
-        // Skip first point of subsequent legs (overlap with previous leg's last point)
-        if (i > 0 && j === 0) continue;
-        geometry.push(legPoints[j]);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
       }
+
+      const response = await fetch(VALHALLA_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'TouringWeather/1.0',
+        },
+        body: requestBody,
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (response.status === 429) {
+        if (attempt < 2) continue; // リトライ
+        return NextResponse.json(
+          { error: 'Valhalla rate limited' },
+          { status: 502 },
+        );
+      }
+
+      if (!response.ok) {
+        const text = await response.text();
+        return NextResponse.json(
+          { error: `Valhalla API error: ${response.status} ${text}` },
+          { status: 502 },
+        );
+      }
+
+      const data = await response.json();
+      const trip = data.trip;
+
+      if (!trip || !trip.legs || trip.legs.length === 0) {
+        return NextResponse.json({ error: 'No route found' }, { status: 404 });
+      }
+
+      // Decode and merge all leg shapes into single geometry
+      const geometry: [number, number][] = [];
+      for (let i = 0; i < trip.legs.length; i++) {
+        const legPoints = decodePolyline6(trip.legs[i].shape);
+        for (let j = 0; j < legPoints.length; j++) {
+          // Skip first point of subsequent legs (overlap with previous leg's last point)
+          if (i > 0 && j === 0) continue;
+          geometry.push(legPoints[j]);
+        }
+      }
+
+      const totalDistance = trip.summary.length;     // km (already in km with units: km)
+      const totalDuration = trip.summary.time;        // seconds
+
+      return NextResponse.json({
+        geometry,
+        totalDistance,
+        totalDuration,
+      });
     }
 
-    const totalDistance = trip.summary.length;     // km (already in km with units: km)
-    const totalDuration = trip.summary.time;        // seconds
-
-    return NextResponse.json({
-      geometry,
-      totalDistance,
-      totalDuration,
-    });
+    // unreachable but TypeScript needs it
+    return NextResponse.json({ error: 'Unexpected error' }, { status: 500 });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },

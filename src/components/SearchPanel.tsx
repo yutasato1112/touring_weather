@@ -130,7 +130,7 @@ function LocationInput({
           />
           {isSearching && (
             <div className="absolute right-2 top-1/2 -translate-y-1/2">
-              <div className="w-4 h-4 border-2 border-gray-500 border-t-blue-400 rounded-full animate-spin" />
+              <div className="spinner-glow" />
             </div>
           )}
         </div>
@@ -515,7 +515,7 @@ export default function SearchPanel({
             title="現在地を使用"
           >
             {isLoadingLocation ? (
-              <div className="w-4 h-4 border-2 border-gray-500 border-t-blue-400 rounded-full animate-spin" />
+              <div className="spinner-glow" />
             ) : (
               '📌'
             )}
@@ -638,9 +638,22 @@ export default function SearchPanel({
         (!searchInput.originText && !searchInput.origin) ||
         (!searchInput.destinationText && !searchInput.destination)
       }
-      className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-700 disabled:text-gray-500 text-white py-3 rounded-lg font-medium text-sm transition-colors"
+      className={`w-full text-white py-3 rounded-lg font-medium text-sm transition-all ${
+        isLoading
+          ? 'loading-shimmer'
+          : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-700 disabled:text-gray-500'
+      }`}
     >
-      {isLoading ? '検索中...' : '経路と天気を検索'}
+      {isLoading ? (
+        <span className="inline-flex items-center gap-2">
+          <span>検索中</span>
+          <span className="loading-dots text-white/80">
+            <span /><span /><span />
+          </span>
+        </span>
+      ) : (
+        '経路と天気を検索'
+      )}
     </button>
   );
 

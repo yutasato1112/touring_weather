@@ -126,3 +126,117 @@ body {
   border-radius: 2px;
   background: rgba(156, 163, 175, 0.5);
 }
+
+/* ===== Loading Animations ===== */
+
+/* Shimmer sweep for buttons */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    #3b82f6 0%,
+    #3b82f6 35%,
+    #60a5fa 50%,
+    #3b82f6 65%,
+    #3b82f6 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* Skeleton pulse for placeholder cards */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.15; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* Bouncing dots for loading text */
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+.loading-dots span {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: dot-bounce 1.2s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) { animation-delay: 0.15s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+/* Glow spinner ring */
+@keyframes spin-glow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.spinner-glow {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(96, 165, 250, 0.15);
+  border-top-color: #60a5fa;
+  animation: spin-glow 0.8s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(96, 165, 250, 0.4));
+}
+
+/* Pulsing ring for map loading */
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  50% { transform: scale(1.2); opacity: 0.15; }
+  100% { transform: scale(0.8); opacity: 0.6; }
+}
+
+.map-loader-ring {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid rgba(96, 165, 250, 0.3);
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+/* Wave bar animation for rain analysis */
+@keyframes wave-bar {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+
+.rain-wave-bars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 12px;
+}
+
+.rain-wave-bars span {
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: currentColor;
+  transform-origin: bottom;
+  animation: wave-bar 1s ease-in-out infinite;
+}
+
+.rain-wave-bars span:nth-child(2) { animation-delay: 0.15s; }
+.rain-wave-bars span:nth-child(3) { animation-delay: 0.3s; }
+.rain-wave-bars span:nth-child(4) { animation-delay: 0.45s; }

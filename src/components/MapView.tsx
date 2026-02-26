@@ -77,8 +77,12 @@ export default function MapView({
 
   if (!MapComponents) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-900">
-        <p className="text-gray-400">地図を読み込み中...</p>
+      <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 gap-4">
+        <div className="relative flex items-center justify-center">
+          <div className="map-loader-ring absolute" />
+          <span className="text-xl">🗺</span>
+        </div>
+        <p className="text-gray-500 text-sm">地図を読み込み中</p>
       </div>
     );
   }

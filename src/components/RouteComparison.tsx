@@ -71,9 +71,11 @@ export default function RouteComparison({
           if (type === 'rain_avoid') {
             if (isAnalyzingRain) {
               return (
-                <div key={type} className="flex-1 flex items-center gap-1.5 px-2 py-1 rounded-md opacity-50">
-                  <div className="w-2 h-2 rounded-full flex-shrink-0 animate-pulse" style={{ backgroundColor: ROUTE_TYPE_COLORS.rain_avoid }} />
-                  <span className="text-[9px] text-gray-400 animate-pulse">分析中...</span>
+                <div key={type} className="flex-1 flex items-center gap-1.5 px-2 py-1 rounded-md opacity-60">
+                  <div className="rain-wave-bars text-purple-400" style={{ height: '10px' }}>
+                    <span /><span /><span /><span />
+                  </div>
+                  <span className="text-[9px] text-gray-400">分析中</span>
                 </div>
               );
             }
@@ -137,14 +139,17 @@ export default function RouteComparison({
             return (
               <div
                 key={type}
-                className="flex-shrink-0 rounded-lg p-3 text-left border-2 border-transparent min-w-[140px] glass-card opacity-60"
+                className="flex-shrink-0 rounded-lg p-3 text-left border-2 border-transparent min-w-[140px] glass-card opacity-70"
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-3 h-3 rounded-full flex-shrink-0 animate-pulse" style={{ backgroundColor: ROUTE_TYPE_COLORS.rain_avoid }} />
+                  <div className="rain-wave-bars text-purple-400">
+                    <span /><span /><span /><span />
+                  </div>
                   <span className="text-xs font-bold text-white truncate">{ROUTE_TYPE_LABELS.rain_avoid}</span>
                 </div>
-                <div className="space-y-1">
-                  <div className="text-xs text-gray-400 animate-pulse">雨予報を分析中...</div>
+                <div className="space-y-1.5">
+                  <div className="skeleton w-20 h-3.5" />
+                  <div className="skeleton w-24 h-3" />
                 </div>
               </div>
             );

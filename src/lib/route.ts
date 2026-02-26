@@ -77,8 +77,13 @@ export async function calculateRoute(
   return fetchValhallaRoute(origin, destination, waypoints, routeType, avoidPolygons);
 }
 
+/** 指定ms待つ */
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 /**
- * 3種類のルートを並列で計算する
+ * 3種類のルートを順次計算する（Valhallaレート制限対策で600msずつ間隔を空ける）
  */
 export async function calculateMultiRoute(
   origin: LatLng,
@@ -89,7 +94,9 @@ export async function calculateMultiRoute(
   const routeTypes: BaseRouteType[] = ['fastest', 'no_highway', 'scenic'];
 
   const results = await Promise.allSettled(
-    routeTypes.map((type) => calculateRoute(origin, destination, waypoints, type, avoidAreas))
+    routeTypes.map((type, i) =>
+      delay(i * 600).then(() => calculateRoute(origin, destination, waypoints, type, avoidAreas))
+    )
   );
 
   const multiRoute: MultiRouteResult = {
