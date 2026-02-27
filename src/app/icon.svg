@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#0f172a"/>
+  <!-- Small sun accent (top-right corner) -->
+  <circle cx="27.5" cy="4.5" r="2.8" fill="#f59e0b"/>
+  <!-- T (bold geometric sans-serif) -->
+  <rect x="2.5" y="7" width="12" height="3.2" rx="0.8" fill="#e2e8f0"/>
+  <rect x="6.5" y="7" width="3.8" height="19" rx="0.8" fill="#e2e8f0"/>
+  <!-- W as winding road (S-curves forming W shape) -->
+  <path
+    d="M14.5 7
+     L17 18
+     Q18 22, 20 18
+     L22 12
+     Q23 9, 24.5 12
+     L26.5 18
+     Q28 22, 29 18
+     L29.5 7"
+    fill="none"
+    stroke="#3b82f6"
+    stroke-width="2.8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Road center dashes -->
+  <path
+    d="M14.5 7
+     L17 18
+     Q18 22, 20 18
+     L22 12
+     Q23 9, 24.5 12
+     L26.5 18
+     Q28 22, 29 18
+     L29.5 7"
+    fill="none"
+    stroke="#93c5fd"
+    stroke-width="0.8"
+    stroke-linecap="round"
+    stroke-dasharray="1.2 2"
+  />
+</svg>

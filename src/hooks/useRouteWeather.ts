@@ -174,28 +174,31 @@ export function useRouteWeather(): UseRouteWeatherReturn {
       const initialRoute = resolveTabRoute(initialType, result, recommendation);
       await fetchWeatherForRoute(initialRoute!, departureTime);
 
-      // バックグラウンドで標高・カーブ度解析を実行
+      // バックグラウンドで標高・カーブ度解析 → 雨回避を順次実行
+      // Open-Meteo レート制限(429)回避のため、リクエストを直列化する
       (async () => {
+        // 1) 標高・カーブ度を順次取得（各ルート間に1秒間隔）
         const types: BaseRouteType[] = ['fastest', 'no_highway', 'scenic'];
         const enriched: Partial<MultiRouteResult> = {};
 
-        await Promise.allSettled(
-          types.map(async (type) => {
-            const route = result[type];
-            if (!route) return;
+        for (let i = 0; i < types.length; i++) {
+          const type = types[i];
+          const route = result[type];
+          if (!route) continue;
 
-            const score = calculateCurvatureScore(route.geometry);
-            const { label } = getCurvatureRating(score);
-            const elevGain = await fetchElevationGain(route.geometry);
+          if (i > 0) await new Promise((r) => setTimeout(r, 1000));
 
-            enriched[type] = {
-              ...route,
-              curvatureScore: score,
-              curvatureRating: label,
-              elevationGain: elevGain,
-            };
-          })
-        );
+          const score = calculateCurvatureScore(route.geometry);
+          const { label } = getCurvatureRating(score);
+          const elevGain = await fetchElevationGain(route.geometry);
+
+          enriched[type] = {
+            ...route,
+            curvatureScore: score,
+            curvatureRating: label,
+            elevationGain: elevGain,
+          };
+        }
 
         setMultiRoute((prev) => {
           if (!prev) return prev;
@@ -206,29 +209,29 @@ export function useRouteWeather(): UseRouteWeatherReturn {
             ...(enriched.scenic && { scenic: { ...prev.scenic!, ...enriched.scenic } }),
           };
         });
-      })().catch(() => {});
 
-      // バックグラウンドで雨回避ルートを生成（最速ルートがある場合のみ）
-      if (result.fastest) {
-        setIsAnalyzingRain(true);
-        generateRainAvoidRoute(
-          result.fastest,
-          input.origin!,
-          input.destination!,
-          input.waypoints,
-          input.avoidAreas,
-          departureTime
-        )
-          .then((rainRoute) => {
+        // 2) 標高取得完了後に雨回避ルートを生成（Open-Meteo への同時リクエストを避ける）
+        if (result.fastest) {
+          setIsAnalyzingRain(true);
+          try {
+            const rainRoute = await generateRainAvoidRoute(
+              result.fastest,
+              input.origin!,
+              input.destination!,
+              input.waypoints,
+              input.avoidAreas,
+              departureTime
+            );
             setMultiRoute((prev) =>
               prev ? { ...prev, rain_avoid: rainRoute } : prev
             );
-          })
-          .catch(() => {})
-          .finally(() => {
+          } catch {
+            // サイレント
+          } finally {
             setIsAnalyzingRain(false);
-          });
-      }
+          }
+        }
+      })().catch(() => {});
     } catch (err) {
       const message = err instanceof Error ? err.message : '不明なエラーが発生しました。';
       setError(message);

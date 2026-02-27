@@ -56,20 +56,24 @@ function sampleGeometry(
   return sampled;
 }
 
-/** Open-Meteo Elevation API で標高データを取得 */
+/** Open-Meteo Elevation API で標高データを取得（429リトライ付き） */
 async function fetchElevations(
   coords: { lat: number; lng: number }[]
 ): Promise<number[]> {
   const lats = coords.map((c) => c.lat.toFixed(4)).join(',');
   const lngs = coords.map((c) => c.lng.toFixed(4)).join(',');
+  const url = `${ELEVATION_API}?latitude=${lats}&longitude=${lngs}`;
 
-  const response = await fetch(
-    `${ELEVATION_API}?latitude=${lats}&longitude=${lngs}`,
-    { signal: AbortSignal.timeout(5000) }
-  );
-
-  if (!response.ok) throw new Error(`Elevation API: ${response.status}`);
-
-  const data = await response.json();
-  return data.elevation as number[];
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (response.status !== 429) {
+      if (!response.ok) throw new Error(`Elevation API: ${response.status}`);
+      const data = await response.json();
+      return data.elevation as number[];
+    }
+    lastStatus = response.status;
+  }
+  throw new Error(`Elevation API: ${lastStatus}`);
 }
