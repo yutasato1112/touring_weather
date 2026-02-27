@@ -138,12 +138,18 @@ export default function RouteComparison({
                 </span>
                 <span className="text-[9px] text-gray-400 leading-none">
                   {formatDistance(route.totalDistance)}
+                  {route.elevationGain != null && route.elevationGain > 0 && (
+                    <span className="text-amber-400 ml-0.5">↑{route.elevationGain.toLocaleString()}m</span>
+                  )}
                   {route.adjustedDuration && route.adjustedDuration > route.totalDuration * 1.05 && (
                     <span className="ml-0.5" style={{ color: CONGESTION_COLORS[congestion.level] }}>
                       {CONGESTION_LABELS[congestion.level]}
                     </span>
                   )}
                 </span>
+                {route.curvatureRating && (
+                  <span className="text-[8px] text-amber-400/80 leading-none">{route.curvatureRating}</span>
+                )}
               </button>
             );
           })}
@@ -228,7 +234,12 @@ export default function RouteComparison({
               </div>
               {route.elevationGain != null && route.elevationGain > 0 && (
                 <div className="text-xs text-amber-400 font-medium">
-                  ↑ {route.elevationGain}m
+                  ↑ {route.elevationGain.toLocaleString()}m
+                </div>
+              )}
+              {route.curvatureRating && (
+                <div className="text-[10px] text-amber-300">
+                  {route.curvatureRating}
                 </div>
               )}
               {(() => {

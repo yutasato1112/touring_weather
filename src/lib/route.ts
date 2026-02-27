@@ -4,13 +4,16 @@ import { generateCirclePolygon } from '@/lib/routePreference';
 
 /** Valhalla ルート種別設定 */
 const VALHALLA_ROUTE_CONFIG: Record<BaseRouteType, {
+  costing?: string;
   useHighways: number;
   useTolls: number;
+  useTrails?: number;
   shortest?: boolean;
+  alternates?: number;
 }> = {
   fastest: { useHighways: 1, useTolls: 1 },
   no_highway: { useHighways: 0, useTolls: 0 },
-  scenic: { useHighways: 0, useTolls: 0, shortest: true },
+  scenic: { costing: 'motorcycle', useHighways: 0, useTolls: 0.5, useTrails: 0.8, alternates: 2 },
 };
 
 /**
@@ -19,7 +22,7 @@ const VALHALLA_ROUTE_CONFIG: Record<BaseRouteType, {
  * 全ルート種別に対応:
  * - fastest: use_highways=1, use_tolls=1（NEXCO高速を自然に優先）
  * - no_highway: use_highways=0, use_tolls=0（一般道のみ）
- * - scenic: use_highways=0, use_tolls=0, shortest=true（最短距離＝ワインディング向き）
+ * - scenic: motorcycle costing, use_trails=0.8, alternates=2（複数候補からカーブ度最高を選択）
  */
 async function fetchValhallaRoute(
   origin: LatLng,
@@ -37,9 +40,12 @@ async function fetchValhallaRoute(
       origin: { lat: origin.lat, lng: origin.lng },
       destination: { lat: destination.lat, lng: destination.lng },
       waypoints: waypoints.map((wp) => ({ lat: wp.position.lat, lng: wp.position.lng })),
+      ...(config.costing && { costing: config.costing }),
       useHighways: config.useHighways,
       useTolls: config.useTolls,
+      ...(config.useTrails !== undefined && { useTrails: config.useTrails }),
       ...(config.shortest && { shortest: true }),
+      ...(config.alternates !== undefined && { alternates: config.alternates }),
       ...(avoidPolygons && avoidPolygons.length > 0 && { excludePolygons: avoidPolygons }),
     }),
   });

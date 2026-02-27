@@ -135,6 +135,38 @@ const LOCAL_WEEKEND: number[] = [
   1.00, // 23時
 ];
 
+// ワインディング(scenic)用: 山間部・峠道は都市部一般道より渋滞が軽い
+// 平日: 通勤需要がほぼないため LOCAL の 30%（70%圧縮）
+const SCENIC_WEEKDAY: number[] = LOCAL_WEEKDAY.map((v) => 1 + (v - 1) * 0.3);
+
+// 休日: ツーリング・観光の独自パターン（午前にライダー/観光客が集中、午後は帰路）
+const SCENIC_WEEKEND: number[] = [
+  1.00, // 0時
+  1.00, // 1時
+  1.00, // 2時
+  1.00, // 3時
+  1.00, // 4時
+  1.00, // 5時
+  1.05, // 6時  — 早朝ライダー出発
+  1.15, // 7時  — ツーリング出発ラッシュ
+  1.25, // 8時  — 観光地へ向かう車増加
+  1.30, // 9時  — ワインディング到着ピーク
+  1.35, // 10時 — 観光地周辺混雑（ビーナスライン等）
+  1.30, // 11時
+  1.25, // 12時 — 昼食タイム（路上は一息）
+  1.20, // 13時
+  1.25, // 14時 — 帰路開始
+  1.35, // 15時 — 帰路ピーク
+  1.30, // 16時 — 下山ラッシュ
+  1.20, // 17時
+  1.10, // 18時
+  1.05, // 19時
+  1.00, // 20時
+  1.00, // 21時
+  1.00, // 22時
+  1.00, // 23時
+];
+
 /**
  * rain_avoid を元のルート種別に解決する
  */
@@ -163,10 +195,13 @@ function isWeekend(date: Date): boolean {
  */
 function selectTable(time: Date, routeType: RouteType): number[] {
   const highway = isHighwayRoute(routeType);
+  const scenic = resolveTrafficRouteType(routeType) === 'scenic';
   const weekend = isWeekend(time);
 
   if (highway && !weekend) return HIGHWAY_WEEKDAY;
   if (highway && weekend) return HIGHWAY_WEEKEND;
+  if (scenic && !weekend) return SCENIC_WEEKDAY;
+  if (scenic && weekend) return SCENIC_WEEKEND;
   if (!highway && !weekend) return LOCAL_WEEKDAY;
   return LOCAL_WEEKEND;
 }

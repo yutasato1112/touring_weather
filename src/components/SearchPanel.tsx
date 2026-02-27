@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { SearchInput, Waypoint, LatLng, MultiRouteResult, RouteType, RouteRecommendation } from '@/types';
 import { geocodeSearch, GeocodeSuggestion } from '@/lib/geocode';
-import { resolveRoutePreference } from '@/lib/routePreference';
+import { resolveRoutePreference, hasLoopIntent } from '@/lib/routePreference';
 import RouteComparison from './RouteComparison';
 
 interface SearchPanelProps {
@@ -449,6 +449,16 @@ export default function SearchPanel({
         }
       }
 
+      // 周回ルート検出: 出発地のみ + 「一周」希望 → 目的地 = 出発地
+      const loopDetected = hasLoopIntent(input.routePreference) && input.origin && !input.destination && !input.destinationText;
+      if (loopDetected && input.origin) {
+        input = {
+          ...input,
+          destination: { ...input.origin },
+          destinationText: input.originText + '（一周）',
+        };
+      }
+
       if (!input.destination && input.destinationText) {
         const results = await geocodeSearch(input.destinationText);
         if (results.length > 0) {
@@ -472,6 +482,10 @@ export default function SearchPanel({
           input.waypoints
         );
         input = { ...input, waypoints: resolved.waypoints, avoidAreas: resolved.avoidAreas };
+        // 周回ルートのラベルが解決された場合、目的地テキストを更新
+        if (resolved.isLoop && resolved.loopLabel) {
+          input = { ...input, destinationText: input.originText + '（' + resolved.loopLabel + '）' };
+        }
       }
 
       setSearchInput(input);
@@ -639,7 +653,7 @@ export default function SearchPanel({
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none">📝</span>
           <input
             type="text"
-            placeholder="例: 中央道経由、箱根を通りたい"
+            placeholder="例: 中央道経由、琵琶湖一周"
             value={searchInput.routePreference}
             onChange={(e) =>
               setSearchInput({ ...searchInput, routePreference: e.target.value })
@@ -657,7 +671,7 @@ export default function SearchPanel({
       disabled={
         isLoading ||
         (!searchInput.originText && !searchInput.origin) ||
-        (!searchInput.destinationText && !searchInput.destination)
+        ((!searchInput.destinationText && !searchInput.destination) && !hasLoopIntent(searchInput.routePreference))
       }
       className={`w-full text-white py-3.5 rounded-xl font-semibold text-sm transition-all active:scale-[0.98] ${
         isLoading

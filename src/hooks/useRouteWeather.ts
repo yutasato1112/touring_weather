@@ -6,6 +6,8 @@ import { calculateMultiRoute, extractRoutePoints, attachTrafficEstimate, compute
 import { fetchWeatherForPoints } from '@/lib/weather';
 import { reverseGeocodeShortName } from '@/lib/geocode';
 import { analyzeRainAvoidance } from '@/lib/rain';
+import { calculateCurvatureScore, getCurvatureRating } from '@/lib/routeAnalysis';
+import { fetchElevationGain } from '@/lib/elevation';
 
 interface UseRouteWeatherReturn {
   routeInfo: RouteInfo | null;
@@ -168,6 +170,40 @@ export function useRouteWeather(): UseRouteWeatherReturn {
       // resolveTabRoute で推薦先のルートデータを取得
       const initialRoute = resolveTabRoute(initialType, result, recommendation);
       await fetchWeatherForRoute(initialRoute!, departureTime);
+
+      // バックグラウンドで標高・カーブ度解析を実行
+      (async () => {
+        const types: BaseRouteType[] = ['fastest', 'no_highway', 'scenic'];
+        const enriched: Partial<MultiRouteResult> = {};
+
+        await Promise.allSettled(
+          types.map(async (type) => {
+            const route = result[type];
+            if (!route) return;
+
+            const score = calculateCurvatureScore(route.geometry);
+            const { label } = getCurvatureRating(score);
+            const elevGain = await fetchElevationGain(route.geometry);
+
+            enriched[type] = {
+              ...route,
+              curvatureScore: score,
+              curvatureRating: label,
+              elevationGain: elevGain,
+            };
+          })
+        );
+
+        setMultiRoute((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            ...(enriched.fastest && { fastest: { ...prev.fastest!, ...enriched.fastest } }),
+            ...(enriched.no_highway && { no_highway: { ...prev.no_highway!, ...enriched.no_highway } }),
+            ...(enriched.scenic && { scenic: { ...prev.scenic!, ...enriched.scenic } }),
+          };
+        });
+      })().catch(() => {});
 
       // バックグラウンドで雨分析を実行（2ルート以上利用可能な場合のみ）
       if (availableRoutes.length >= 2) {

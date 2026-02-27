@@ -5,6 +5,10 @@ import { geocodeSearch } from '@/lib/geocode';
 export interface RoutePreferenceResult {
   waypoints: Waypoint[];
   avoidAreas: AvoidArea[];
+  /** 周回ルートかどうか */
+  isLoop?: boolean;
+  /** 周回ラベル（例: "琵琶湖一周"） */
+  loopLabel?: string;
 }
 
 interface RouteKeyword {
@@ -313,6 +317,345 @@ const SUFFIX_PATTERNS = [
   /まわり$/,
 ];
 
+// === 周回ルート ===
+
+/** 周回意図を検出するパターン */
+const LOOP_PATTERNS: RegExp[] = [
+  /[をの]?一周したい$/,
+  /[をの]?一周して$/,
+  /[をの]?一周$/,
+  /[をの]?1周$/,
+  /[をの]?周遊$/,
+  /[をの]?周回$/,
+  /[をの]?ぐるっと(回りたい|一周|回って)?$/,
+  /[をの]?(まわりたい|回りたい)$/,
+  /(一周|周遊|周回)(コース|ルート)$/,
+];
+
+/** 周回ロケーション定義 */
+interface LoopLocation {
+  names: string[];
+  center: LatLng;
+  /** 円形生成用の半径 (km) — perimeterPoints がある場合は不要 */
+  radiusKm?: number;
+  /** 手動定義の周囲ポイント（不規則な形状用） */
+  perimeterPoints?: LatLng[];
+  /** 円形生成時の経由地数（デフォルト 6） */
+  numPoints?: number;
+  label: string;
+}
+
+const LOOP_LOCATIONS: LoopLocation[] = [
+  // --- 湖 ---
+  {
+    names: ['琵琶湖', 'びわ湖', 'びわこ', 'ビワイチ'],
+    center: { lat: 35.25, lng: 136.10 },
+    perimeterPoints: [
+      { lat: 35.00, lng: 135.90 },  // 南西（大津）
+      { lat: 35.15, lng: 136.05 },  // 南東（草津）
+      { lat: 35.30, lng: 136.20 },  // 東（近江八幡）
+      { lat: 35.45, lng: 136.25 },  // 北東（彦根）
+      { lat: 35.55, lng: 136.15 },  // 北（長浜）
+      { lat: 35.50, lng: 136.00 },  // 北西（マキノ）
+      { lat: 35.35, lng: 135.95 },  // 西（高島）
+      { lat: 35.20, lng: 135.90 },  // 南西（堅田）
+      { lat: 35.05, lng: 135.87 },  // 南（大津港）
+    ],
+    label: '琵琶湖一周',
+  },
+  {
+    names: ['霞ヶ浦', 'かすみがうら', '霞ケ浦'],
+    center: { lat: 36.03, lng: 140.40 },
+    perimeterPoints: [
+      { lat: 36.08, lng: 140.22 },  // 西（土浦）
+      { lat: 36.13, lng: 140.35 },  // 北西（かすみがうら）
+      { lat: 36.12, lng: 140.50 },  // 北東（行方）
+      { lat: 36.00, lng: 140.55 },  // 東（潮来）
+      { lat: 35.93, lng: 140.45 },  // 南東（稲敷）
+      { lat: 35.95, lng: 140.30 },  // 南（美浦）
+      { lat: 36.02, lng: 140.20 },  // 南西（阿見）
+    ],
+    label: '霞ヶ浦一周',
+  },
+  {
+    names: ['浜名湖', 'はまなこ'],
+    center: { lat: 34.75, lng: 137.58 },
+    perimeterPoints: [
+      { lat: 34.72, lng: 137.52 },  // 南西
+      { lat: 34.78, lng: 137.52 },  // 北西（三ケ日）
+      { lat: 34.80, lng: 137.58 },  // 北
+      { lat: 34.78, lng: 137.65 },  // 北東
+      { lat: 34.72, lng: 137.64 },  // 東（舘山寺）
+      { lat: 34.68, lng: 137.58 },  // 南
+    ],
+    label: '浜名湖一周',
+  },
+  {
+    names: ['山中湖', 'やまなかこ'],
+    center: { lat: 35.41, lng: 138.87 },
+    radiusKm: 3,
+    numPoints: 6,
+    label: '山中湖一周',
+  },
+  {
+    names: ['河口湖', 'かわぐちこ'],
+    center: { lat: 35.51, lng: 138.75 },
+    radiusKm: 3.5,
+    numPoints: 6,
+    label: '河口湖一周',
+  },
+  {
+    names: ['諏訪湖', 'すわこ'],
+    center: { lat: 36.05, lng: 138.08 },
+    radiusKm: 4,
+    numPoints: 6,
+    label: '諏訪湖一周',
+  },
+  {
+    names: ['十和田湖', 'とわだこ'],
+    center: { lat: 40.46, lng: 140.87 },
+    radiusKm: 6,
+    numPoints: 6,
+    label: '十和田湖一周',
+  },
+  {
+    names: ['洞爺湖', 'とうやこ'],
+    center: { lat: 42.60, lng: 140.85 },
+    radiusKm: 5,
+    numPoints: 6,
+    label: '洞爺湖一周',
+  },
+  {
+    names: ['中禅寺湖', 'ちゅうぜんじこ'],
+    center: { lat: 36.74, lng: 139.48 },
+    radiusKm: 3.5,
+    numPoints: 6,
+    label: '中禅寺湖一周',
+  },
+  // --- 山 ---
+  {
+    names: ['富士山', 'ふじさん'],
+    center: { lat: 35.3606, lng: 138.7274 },
+    perimeterPoints: [
+      { lat: 35.22, lng: 138.62 },  // 南西（富士宮）
+      { lat: 35.22, lng: 138.80 },  // 南東（御殿場）
+      { lat: 35.35, lng: 138.90 },  // 東（須走）
+      { lat: 35.48, lng: 138.85 },  // 北東（山中湖）
+      { lat: 35.50, lng: 138.70 },  // 北（河口湖）
+      { lat: 35.42, lng: 138.58 },  // 北西（精進湖）
+      { lat: 35.30, lng: 138.55 },  // 西（白糸の滝）
+    ],
+    label: '富士山一周',
+  },
+  {
+    names: ['阿蘇', '阿蘇山', 'あそさん'],
+    center: { lat: 32.88, lng: 131.10 },
+    perimeterPoints: [
+      { lat: 32.80, lng: 131.00 },  // 南西
+      { lat: 32.80, lng: 131.20 },  // 南東
+      { lat: 32.92, lng: 131.25 },  // 東
+      { lat: 33.00, lng: 131.15 },  // 北東
+      { lat: 33.00, lng: 131.00 },  // 北西
+      { lat: 32.90, lng: 130.95 },  // 西
+    ],
+    label: '阿蘇山一周',
+  },
+  // --- 半島・島 ---
+  {
+    names: ['三浦半島', 'みうらはんとう'],
+    center: { lat: 35.22, lng: 139.65 },
+    perimeterPoints: [
+      { lat: 35.32, lng: 139.62 },  // 北西（鎌倉）
+      { lat: 35.25, lng: 139.58 },  // 西（逗子）
+      { lat: 35.15, lng: 139.60 },  // 南西（葉山）
+      { lat: 35.13, lng: 139.62 },  // 南（三崎）
+      { lat: 35.15, lng: 139.70 },  // 南東（城ヶ島）
+      { lat: 35.23, lng: 139.73 },  // 東（横須賀）
+      { lat: 35.33, lng: 139.70 },  // 北東（金沢八景）
+    ],
+    label: '三浦半島一周',
+  },
+  {
+    names: ['房総半島', 'ぼうそうはんとう', '房総'],
+    center: { lat: 35.10, lng: 140.00 },
+    perimeterPoints: [
+      { lat: 35.35, lng: 139.95 },  // 北西（木更津）
+      { lat: 35.15, lng: 139.85 },  // 西（鋸山）
+      { lat: 34.95, lng: 139.85 },  // 南西（館山）
+      { lat: 34.92, lng: 140.00 },  // 南（白浜）
+      { lat: 35.05, lng: 140.20 },  // 東（勝浦）
+      { lat: 35.25, lng: 140.35 },  // 北東（九十九里）
+      { lat: 35.40, lng: 140.10 },  // 北（千葉）
+    ],
+    label: '房総半島一周',
+  },
+  {
+    names: ['伊豆半島', '伊豆一周'],
+    center: { lat: 34.90, lng: 139.00 },
+    perimeterPoints: [
+      { lat: 35.10, lng: 139.08 },  // 北東（熱海）
+      { lat: 34.97, lng: 139.10 },  // 東（伊東）
+      { lat: 34.82, lng: 139.10 },  // 東南（下田東）
+      { lat: 34.68, lng: 138.95 },  // 南（石廊崎）
+      { lat: 34.78, lng: 138.85 },  // 西（松崎）
+      { lat: 34.90, lng: 138.85 },  // 北西（土肥）
+      { lat: 35.05, lng: 138.93 },  // 北（修善寺）
+    ],
+    label: '伊豆半島一周',
+  },
+  {
+    names: ['淡路島', 'あわじしま'],
+    center: { lat: 34.35, lng: 134.85 },
+    perimeterPoints: [
+      { lat: 34.60, lng: 134.90 },  // 北東（岩屋）
+      { lat: 34.45, lng: 134.95 },  // 東（洲本）
+      { lat: 34.25, lng: 134.90 },  // 南東
+      { lat: 34.15, lng: 134.80 },  // 南（南あわじ）
+      { lat: 34.25, lng: 134.75 },  // 南西
+      { lat: 34.40, lng: 134.75 },  // 西
+      { lat: 34.55, lng: 134.80 },  // 北西
+    ],
+    label: '淡路島一周',
+  },
+];
+
+/**
+ * キーワードから周回意図を抽出する
+ */
+function extractLoopIntent(keyword: string): { isLoop: boolean; cleaned: string } {
+  for (const pattern of LOOP_PATTERNS) {
+    if (pattern.test(keyword)) {
+      const cleaned = keyword.replace(pattern, '').trim();
+      return { isLoop: true, cleaned };
+    }
+  }
+  return { isLoop: false, cleaned: keyword };
+}
+
+/**
+ * テキスト全体に周回意図があるかどうか（SearchPanel用）
+ */
+export function hasLoopIntent(text: string): boolean {
+  if (!text.trim()) return false;
+  const keywords = splitKeywords(text.trim());
+  return keywords.some((kw) => extractLoopIntent(kw).isLoop);
+}
+
+/**
+ * 中心座標から等間隔の円形経由地を生成する
+ */
+function generateCircularWaypoints(
+  center: LatLng,
+  radiusKm: number,
+  numPoints: number = 6
+): LatLng[] {
+  const points: LatLng[] = [];
+  for (let i = 0; i < numPoints; i++) {
+    // 北（0°）から時計回り
+    const angle = (2 * Math.PI * i) / numPoints - Math.PI / 2;
+    const dLat = (radiusKm / 111.32) * Math.sin(angle);
+    const dLng =
+      (radiusKm / (111.32 * Math.cos((center.lat * Math.PI) / 180))) * Math.cos(angle);
+    points.push({ lat: center.lat + dLat, lng: center.lng + dLng });
+  }
+  return points;
+}
+
+/**
+ * 2点間の方位角を計算する (度)
+ */
+function bearing(from: LatLng, to: LatLng): number {
+  const dLng = ((to.lng - from.lng) * Math.PI) / 180;
+  const lat1 = (from.lat * Math.PI) / 180;
+  const lat2 = (to.lat * Math.PI) / 180;
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/**
+ * origin に最も近い周囲点を起点として、進入方向に自然な順序で並べる
+ */
+function orderPerimeterFromOrigin(
+  perimeterPoints: LatLng[],
+  origin: LatLng
+): LatLng[] {
+  if (perimeterPoints.length <= 1) return perimeterPoints;
+
+  // origin に最も近い点を見つける
+  let closestIdx = 0;
+  let minDist = Infinity;
+  for (let i = 0; i < perimeterPoints.length; i++) {
+    const d = haversineDistance(origin, perimeterPoints[i]);
+    if (d < minDist) {
+      minDist = d;
+      closestIdx = i;
+    }
+  }
+
+  const n = perimeterPoints.length;
+
+  // 時計回りと反時計回りの最初のポイントへの方位角を比較
+  const cwIdx = (closestIdx + 1) % n;
+  const ccwIdx = (closestIdx - 1 + n) % n;
+
+  const approachBearing = bearing(origin, perimeterPoints[closestIdx]);
+  const cwBearing = bearing(perimeterPoints[closestIdx], perimeterPoints[cwIdx]);
+  const ccwBearing = bearing(perimeterPoints[closestIdx], perimeterPoints[ccwIdx]);
+
+  // 進入方向からの転角が小さい方を選ぶ（自然なカーブ）
+  const cwTurn = Math.abs(((cwBearing - approachBearing + 540) % 360) - 180);
+  const ccwTurn = Math.abs(((ccwBearing - approachBearing + 540) % 360) - 180);
+
+  const clockwise = cwTurn <= ccwTurn;
+
+  const ordered: LatLng[] = [];
+  for (let i = 0; i < n; i++) {
+    const idx = clockwise
+      ? (closestIdx + i) % n
+      : (closestIdx - i + n) % n;
+    ordered.push(perimeterPoints[idx]);
+  }
+
+  return ordered;
+}
+
+/**
+ * 周回辞書からロケーションを検索する
+ */
+function findLoopLocation(keyword: string): LoopLocation | null {
+  // 完全一致
+  for (const loc of LOOP_LOCATIONS) {
+    for (const name of loc.names) {
+      if (name === keyword) return loc;
+    }
+  }
+  // 部分一致（キーワードに名前が含まれる: 最長マッチ優先）
+  let bestMatch: LoopLocation | null = null;
+  let bestLen = 0;
+  for (const loc of LOOP_LOCATIONS) {
+    for (const name of loc.names) {
+      if (keyword.includes(name) && name.length > bestLen) {
+        bestMatch = loc;
+        bestLen = name.length;
+      }
+    }
+  }
+  if (bestMatch) return bestMatch;
+  // 部分一致（名前にキーワードが含まれる: 最短名優先）
+  let shortMatch: LoopLocation | null = null;
+  let shortLen = Infinity;
+  for (const loc of LOOP_LOCATIONS) {
+    for (const name of loc.names) {
+      if (name.includes(keyword) && name.length < shortLen) {
+        shortMatch = loc;
+        shortLen = name.length;
+      }
+    }
+  }
+  return shortMatch;
+}
+
 /**
  * テキストをキーワードに分割する
  */
@@ -459,9 +802,51 @@ export async function resolveRoutePreference(
   const keywords = splitKeywords(trimmed);
   const resolvedWaypoints: Waypoint[] = [];
   const avoidAreas: AvoidArea[] = [];
+  let isLoop = false;
+  let loopLabel: string | undefined;
 
   for (const keyword of keywords) {
-    // 否定表現チェック
+    // 1. 周回意図チェック（否定/肯定より先に判定）
+    const { isLoop: loopDetected, cleaned: loopCleaned } = extractLoopIntent(keyword);
+
+    if (loopDetected && loopCleaned.length >= 1) {
+      isLoop = true;
+
+      // 周回辞書を検索
+      const loopLoc = findLoopLocation(loopCleaned);
+      if (loopLoc) {
+        loopLabel = loopLoc.label;
+        let perimeter: LatLng[];
+        if (loopLoc.perimeterPoints) {
+          perimeter = loopLoc.perimeterPoints;
+        } else {
+          perimeter = generateCircularWaypoints(
+            loopLoc.center,
+            loopLoc.radiusKm || 10,
+            loopLoc.numPoints || 6
+          );
+        }
+        const ordered = orderPerimeterFromOrigin(perimeter, origin);
+        for (const pt of ordered) {
+          resolvedWaypoints.push({ position: pt, label: loopLoc.label });
+        }
+      } else if (loopCleaned.length >= 2) {
+        // ジオコードフォールバック
+        const results = await geocodeSearch(loopCleaned);
+        if (results.length > 0) {
+          loopLabel = `${results[0].name || loopCleaned}一周`;
+          const center = { lat: results[0].lat, lng: results[0].lng };
+          const perimeter = generateCircularWaypoints(center, 10, 6);
+          const ordered = orderPerimeterFromOrigin(perimeter, origin);
+          for (const pt of ordered) {
+            resolvedWaypoints.push({ position: pt, label: loopLabel });
+          }
+        }
+      }
+      continue;
+    }
+
+    // 2. 否定表現チェック
     const { isNegative, cleaned: negCleaned } = extractNegative(keyword);
 
     if (isNegative) {
@@ -512,6 +897,13 @@ export async function resolveRoutePreference(
   let finalWaypoints: Waypoint[];
   if (resolvedWaypoints.length === 0) {
     finalWaypoints = existingWaypoints;
+  } else if (isLoop) {
+    // 周回ルート: 周回経由地はorderPerimeterFromOriginで並べ済みなのでそのまま使う
+    // 近接フィルタは適用しない（周回ポイントは出発地付近にあることが多い）
+    const validExisting = existingWaypoints.filter(
+      (wp) => wp.position.lat !== 0 || wp.position.lng !== 0
+    );
+    finalWaypoints = [...resolvedWaypoints, ...validExisting];
   } else {
     // 出発地・目的地に近すぎるウェイポイントを除外
     const filtered = resolvedWaypoints.filter((wp) => {
@@ -534,5 +926,5 @@ export async function resolveRoutePreference(
     }
   }
 
-  return { waypoints: finalWaypoints, avoidAreas };
+  return { waypoints: finalWaypoints, avoidAreas, isLoop, loopLabel };
 }

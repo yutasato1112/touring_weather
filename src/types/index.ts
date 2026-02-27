@@ -80,6 +80,10 @@ export interface RouteInfo {
   adjustedDuration?: number;
   /** 累積標高 (m) */
   elevationGain?: number;
+  /** カーブ度 (deg/km) */
+  curvatureScore?: number;
+  /** カーブ度ラベル (「峠道」等) */
+  curvatureRating?: string;
 }
 
 /** ルート種別付き経路情報 */
