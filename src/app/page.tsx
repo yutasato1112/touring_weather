@@ -24,7 +24,7 @@ const MapView = dynamic(() => import('@/components/MapView'), {
   ),
 });
 
-type MapClickMode = 'origin' | 'destination' | null;
+type MapClickMode = 'origin' | 'destination' | `waypoint-${number}` | null;
 
 export default function Home() {
   const {
@@ -123,6 +123,19 @@ export default function Home() {
           destinationText: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
         }));
         setMapClickMode(null);
+      } else if (mapClickMode?.startsWith('waypoint-')) {
+        const index = parseInt(mapClickMode.split('-')[1], 10);
+        setSearchInput((prev) => {
+          const waypoints = [...prev.waypoints];
+          if (index < waypoints.length) {
+            waypoints[index] = {
+              position: { lat, lng },
+              label: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+            };
+          }
+          return { ...prev, waypoints };
+        });
+        setMapClickMode(null);
       }
     },
     [mapClickMode]
@@ -201,6 +214,8 @@ export default function Home() {
         onSetDestinationFromMap={mapClickMode === 'destination'}
         onToggleOriginFromMap={() => setMapClickMode(mapClickMode === 'origin' ? null : 'origin')}
         onToggleDestinationFromMap={() => setMapClickMode(mapClickMode === 'destination' ? null : 'destination')}
+        waypointMapClickIndex={mapClickMode?.startsWith('waypoint-') ? parseInt(mapClickMode.split('-')[1], 10) : null}
+        onToggleWaypointFromMap={(index: number) => setMapClickMode(mapClickMode === `waypoint-${index}` ? null : `waypoint-${index}`)}
         searchInput={searchInput}
         setSearchInput={setSearchInput}
         onUseCurrentLocation={handleUseCurrentLocation}

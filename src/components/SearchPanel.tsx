@@ -15,6 +15,8 @@ interface SearchPanelProps {
   onSetDestinationFromMap: boolean;
   onToggleOriginFromMap: () => void;
   onToggleDestinationFromMap: () => void;
+  waypointMapClickIndex: number | null;
+  onToggleWaypointFromMap: (index: number) => void;
   searchInput: SearchInput;
   setSearchInput: (input: SearchInput) => void;
   onUseCurrentLocation: () => void;
@@ -206,6 +208,8 @@ export default function SearchPanel({
   onSetDestinationFromMap,
   onToggleOriginFromMap,
   onToggleDestinationFromMap,
+  waypointMapClickIndex,
+  onToggleWaypointFromMap,
   searchInput,
   setSearchInput,
   onUseCurrentLocation,
@@ -580,8 +584,8 @@ export default function SearchPanel({
                 label: s.label,
               })
             }
-            isMapSelectActive={false}
-            onToggleMapSelect={() => {}}
+            isMapSelectActive={waypointMapClickIndex === index}
+            onToggleMapSelect={() => onToggleWaypointFromMap(index)}
             accentColor="purple"
             rightButton={
               <button
