@@ -412,15 +412,15 @@ export const LOOP_LOCATIONS: LoopLocation[] = [
   },
   {
     names: ['霞ヶ浦', 'かすみがうら', '霞ケ浦'],
-    center: { lat: 36.03, lng: 140.40 },
+    center: { lat: 36.03, lng: 140.35 },
     perimeterPoints: [
-      { lat: 36.08, lng: 140.22 },  // 西（土浦）
-      { lat: 36.13, lng: 140.35 },  // 北西（かすみがうら）
-      { lat: 36.12, lng: 140.50 },  // 北東（行方）
-      { lat: 36.00, lng: 140.55 },  // 東（潮来）
-      { lat: 35.93, lng: 140.45 },  // 南東（稲敷）
-      { lat: 35.95, lng: 140.30 },  // 南（美浦）
-      { lat: 36.02, lng: 140.20 },  // 南西（阿見）
+      { lat: 36.074, lng: 140.210 },  // 西（土浦港）
+      { lat: 36.093, lng: 140.348 },  // 北（歩崎公園付近）
+      { lat: 36.060, lng: 140.445 },  // 北東（玉造）
+      { lat: 36.000, lng: 140.490 },  // 東（麻生）
+      { lat: 35.960, lng: 140.430 },  // 南東（和田・浮島）
+      { lat: 35.975, lng: 140.305 },  // 南（美浦・大山）
+      { lat: 36.020, lng: 140.215 },  // 南西（阿見）
     ],
     label: '霞ヶ浦一周',
   },
@@ -919,15 +919,35 @@ export async function resolveRoutePreference(
           resolvedWaypoints.push({ position: pt, label: loopLoc.label });
         }
       } else if (loopCleaned.length >= 2) {
-        // ジオコードフォールバック
-        const results = await geocodeSearch(loopCleaned);
-        if (results.length > 0) {
-          loopLabel = `${results[0].name || loopCleaned}一周`;
-          const center = { lat: results[0].lat, lng: results[0].lng };
-          const perimeter = generateCircularWaypoints(center, 10, 6);
-          const ordered = orderPerimeterFromOrigin(perimeter, origin);
-          for (const pt of ordered) {
-            resolvedWaypoints.push({ position: pt, label: loopLabel });
+        // Nominatim ポリゴンフォールバック
+        let resolved = false;
+        try {
+          const res = await fetch(`/api/loop-perimeter?q=${encodeURIComponent(loopCleaned)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.perimeterPoints && data.perimeterPoints.length >= 3) {
+              loopLabel = `${loopCleaned}一周`;
+              const ordered = orderPerimeterFromOrigin(data.perimeterPoints, origin);
+              for (const pt of ordered) {
+                resolvedWaypoints.push({ position: pt, label: loopLabel });
+              }
+              resolved = true;
+            }
+          }
+        } catch {
+          // ポリゴン取得失敗 → ジオコードフォールバックへ
+        }
+        if (!resolved) {
+          // ジオコード + 円形生成フォールバック
+          const results = await geocodeSearch(loopCleaned);
+          if (results.length > 0) {
+            loopLabel = `${results[0].name || loopCleaned}一周`;
+            const center = { lat: results[0].lat, lng: results[0].lng };
+            const perimeter = generateCircularWaypoints(center, 10, 6);
+            const ordered = orderPerimeterFromOrigin(perimeter, origin);
+            for (const pt of ordered) {
+              resolvedWaypoints.push({ position: pt, label: loopLabel });
+            }
           }
         }
       }

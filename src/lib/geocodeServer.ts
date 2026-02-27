@@ -5,6 +5,8 @@
  * /api/geocode および /api/parse-route-preference の両方から利用される。
  */
 
+import type { LatLng } from '@/types';
+
 export interface GeocodeSuggestion {
   lat: number;
   lng: number;
@@ -276,4 +278,152 @@ export async function geocodeSearchServer(q: string): Promise<GeocodeSuggestion[
   }
 
   return [];
+}
+
+// === 周回ルート用: Nominatim ポリゴン取得 ===
+
+/** サーバーサイド用 haversine 距離計算 (km) — routePreference.ts との import 循環を回避 */
+function haversineDistanceServer(a: LatLng, b: LatLng): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h =
+    sinLat * sinLat +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * sinLng * sinLng;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+/** ポリゴン座標列から等弧長サンプリングで numPoints 点を取得 */
+function samplePolygonEquidistant(
+  coords: [number, number][],
+  numPoints: number
+): LatLng[] {
+  if (coords.length < 3) return [];
+
+  // 1. 累積弧長を計算
+  const cumDist: number[] = [0];
+  for (let i = 1; i < coords.length; i++) {
+    const a: LatLng = { lat: coords[i - 1][1], lng: coords[i - 1][0] };
+    const b: LatLng = { lat: coords[i][1], lng: coords[i][0] };
+    cumDist.push(cumDist[i - 1] + haversineDistanceServer(a, b));
+  }
+
+  const totalLength = cumDist[cumDist.length - 1];
+  if (totalLength === 0) return [];
+
+  // 2. 等間隔でサンプリング
+  const interval = totalLength / numPoints;
+  const sampled: LatLng[] = [];
+
+  for (let i = 0; i < numPoints; i++) {
+    const targetDist = i * interval;
+
+    // targetDist が位置するセグメントを探す
+    let segIdx = 0;
+    for (let j = 1; j < cumDist.length; j++) {
+      if (cumDist[j] >= targetDist) {
+        segIdx = j - 1;
+        break;
+      }
+      segIdx = j - 1;
+    }
+
+    const segStart = cumDist[segIdx];
+    const segEnd = cumDist[segIdx + 1] ?? cumDist[segIdx];
+    const segLen = segEnd - segStart;
+    const t = segLen > 0 ? (targetDist - segStart) / segLen : 0;
+
+    const lat = coords[segIdx][1] + t * ((coords[segIdx + 1]?.[1] ?? coords[segIdx][1]) - coords[segIdx][1]);
+    const lng = coords[segIdx][0] + t * ((coords[segIdx + 1]?.[0] ?? coords[segIdx][0]) - coords[segIdx][0]);
+    sampled.push({ lat, lng });
+  }
+
+  return sampled;
+}
+
+/**
+ * Nominatim から地物の境界ポリゴンを取得し、等弧長サンプリングで周回経由地を生成する。
+ *
+ * @param placeName 検索する地名（例: "霞ヶ浦", "猪苗代湖"）
+ * @param numPoints サンプリングポイント数（デフォルト 8）
+ * @returns center + perimeterPoints、または取得失敗時は null
+ */
+export async function fetchLoopPerimeter(
+  placeName: string,
+  numPoints: number = 8
+): Promise<{ center: LatLng; perimeterPoints: LatLng[] } | null> {
+  try {
+    const params = new URLSearchParams({
+      q: placeName,
+      format: 'json',
+      polygon_geojson: '1',
+      polygon_threshold: '0.005',
+      limit: '3',
+      countrycodes: 'jp',
+      'accept-language': 'ja',
+    });
+
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?${params}`,
+      {
+        headers: { 'User-Agent': 'TouringWeather/1.0' },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) return null;
+
+    // ポリゴンを持つ結果を探す
+    for (const item of data) {
+      const geojson = item.geojson;
+      if (!geojson) continue;
+
+      let outerRing: [number, number][] | null = null;
+
+      if (geojson.type === 'Polygon' && geojson.coordinates?.length > 0) {
+        outerRing = geojson.coordinates[0];
+      } else if (geojson.type === 'MultiPolygon' && geojson.coordinates?.length > 0) {
+        // 最大面積の外輪を選択
+        let maxLen = 0;
+        for (const polygon of geojson.coordinates) {
+          if (polygon[0] && polygon[0].length > maxLen) {
+            maxLen = polygon[0].length;
+            outerRing = polygon[0];
+          }
+        }
+      }
+
+      if (!outerRing || outerRing.length < 4) continue;
+
+      // 重心を計算
+      let sumLat = 0, sumLng = 0;
+      // 最後の点はリングの閉じ点なので除外
+      const ringLen = outerRing[0][0] === outerRing[outerRing.length - 1][0] &&
+                      outerRing[0][1] === outerRing[outerRing.length - 1][1]
+        ? outerRing.length - 1
+        : outerRing.length;
+
+      for (let i = 0; i < ringLen; i++) {
+        sumLng += outerRing[i][0];
+        sumLat += outerRing[i][1];
+      }
+      const center: LatLng = { lat: sumLat / ringLen, lng: sumLng / ringLen };
+
+      // 等弧長サンプリング
+      const perimeterPoints = samplePolygonEquidistant(outerRing, numPoints);
+      if (perimeterPoints.length < 3) continue;
+
+      return { center, perimeterPoints };
+    }
+
+    return null;
+  } catch (err) {
+    console.error('fetchLoopPerimeter error:', err);
+    return null;
+  }
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { geocodeSearchServer } from '@/lib/geocodeServer';
+import { geocodeSearchServer, fetchLoopPerimeter } from '@/lib/geocodeServer';
 import {
   findLoopLocation,
   generateCircularWaypoints,
@@ -313,14 +313,25 @@ export async function POST(request: NextRequest) {
               resolvedWaypoints.push({ position: pt, label: loopLoc.label });
             }
           } else {
-            const results = await geocodeSearchServer(target);
-            if (results.length > 0) {
-              loopLabel = `${results[0].name || target}一周`;
-              const center = { lat: results[0].lat, lng: results[0].lng };
-              const perimeter = generateCircularWaypoints(center, 10, 6);
-              const ordered = orderPerimeterFromOrigin(perimeter, origin);
+            // Nominatim ポリゴンフォールバック
+            const polyResult = await fetchLoopPerimeter(target, 8);
+            if (polyResult && polyResult.perimeterPoints.length >= 3) {
+              loopLabel = `${target}一周`;
+              const ordered = orderPerimeterFromOrigin(polyResult.perimeterPoints, origin);
               for (const pt of ordered) {
                 resolvedWaypoints.push({ position: pt, label: loopLabel });
+              }
+            } else {
+              // ジオコード + 円形生成フォールバック
+              const results = await geocodeSearchServer(target);
+              if (results.length > 0) {
+                loopLabel = `${results[0].name || target}一周`;
+                const center = { lat: results[0].lat, lng: results[0].lng };
+                const perimeter = generateCircularWaypoints(center, 10, 6);
+                const ordered = orderPerimeterFromOrigin(perimeter, origin);
+                for (const pt of ordered) {
+                  resolvedWaypoints.push({ position: pt, label: loopLabel });
+                }
               }
             }
           }
