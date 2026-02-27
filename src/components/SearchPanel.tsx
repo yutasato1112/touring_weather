@@ -74,7 +74,7 @@ function LocationInput({
     geocodeSearch(debouncedQuery).then((results) => {
       if (!cancelled) {
         setSuggestions(results);
-        setShowSuggestions(results.length > 0);
+        setShowSuggestions(true);
         setIsSearching(false);
       }
     });
@@ -149,19 +149,30 @@ function LocationInput({
         </button>
       </div>
 
-      {showSuggestions && suggestions.length > 0 && (
+      {showSuggestions && (
         <ul className="absolute z-50 w-full mt-1 glass-panel rounded-xl shadow-xl max-h-52 overflow-y-auto">
+          {suggestions.length === 0 && !isSearching && value.length >= 2 && !latLng && (
+            <li className="px-3 py-3 text-sm text-gray-500 text-center">
+              候補が見つかりません
+            </li>
+          )}
           {suggestions.map((s, i) => (
             <li key={i} className={i < suggestions.length - 1 ? 'border-b border-white/5' : ''}>
               <button
                 type="button"
-                className="w-full text-left px-3 py-3.5 text-sm text-gray-200 hover:bg-gray-700/60 active:bg-gray-600/60 transition-colors"
+                className="w-full text-left px-3 py-2.5 hover:bg-gray-700/60 active:bg-gray-600/60 transition-colors flex items-center gap-2.5"
                 onClick={() => {
                   onSelect(s);
                   setShowSuggestions(false);
                 }}
               >
-                <span className="block truncate">{s.label}</span>
+                <span className="text-base flex-shrink-0">{s.icon || '📍'}</span>
+                <div className="min-w-0 flex-1">
+                  <span className="block text-sm text-white font-medium truncate">{s.name || s.label}</span>
+                  {s.area && (
+                    <span className="block text-xs text-gray-400 truncate">{s.area}</span>
+                  )}
+                </div>
               </button>
             </li>
           ))}

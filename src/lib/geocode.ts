@@ -4,6 +4,9 @@ export interface GeocodeSuggestion {
   lat: number;
   lng: number;
   label: string;
+  name: string;
+  area: string;
+  icon: string;
   type: string;
   category: string;
 }
