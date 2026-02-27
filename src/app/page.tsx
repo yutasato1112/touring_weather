@@ -9,6 +9,7 @@ import SearchPanel from '@/components/SearchPanel';
 import WeatherTimeline from '@/components/WeatherTimeline';
 import RouteComparison from '@/components/RouteComparison';
 import ErrorMessage from '@/components/ErrorMessage';
+import NavigationLauncher from '@/components/NavigationLauncher';
 
 const MapView = dynamic(() => import('@/components/MapView'), {
   ssr: false,
@@ -161,6 +162,32 @@ export default function Home() {
         />
       </div>
 
+      {/* Route calculation loading overlay */}
+      {isLoadingRoute && (
+        <div className="absolute inset-0 z-[998] flex flex-col items-center justify-center bg-black/50 route-loading-overlay">
+          <div className="route-spinner">
+            <div className="route-spinner-ring" />
+            <div className="route-spinner-ring route-spinner-ring-2" />
+            <span className="route-spinner-icon">🏍️</span>
+          </div>
+          <p className="route-loading-text mt-5 text-sm font-medium tracking-wide">ルート計算中</p>
+        </div>
+      )}
+
+      {/* Navigation launcher — desktop: above weather timeline */}
+      {isDesktop && multiRoute && searchInput.origin && searchInput.destination && (
+        <div className="fixed right-4 z-[1001]" style={{ bottom: '10rem' }}>
+          <NavigationLauncher
+            origin={searchInput.origin}
+            destination={searchInput.destination}
+            waypoints={searchInput.waypoints}
+            selectedRouteType={selectedRouteType}
+            multiRoute={multiRoute}
+            routeRecommendation={routeRecommendation}
+          />
+        </div>
+      )}
+
       {/* Error message overlay */}
       <ErrorMessage message={error} onClose={clearError} />
 
@@ -207,6 +234,19 @@ export default function Home() {
               selectedRouteType={selectedRouteType}
               inline
             />
+          )}
+          {/* Navigation launcher — mobile: floats below panel, no extra height */}
+          {multiRoute && searchInput.origin && searchInput.destination && (
+            <div className="absolute -bottom-11 right-2">
+              <NavigationLauncher
+                origin={searchInput.origin}
+                destination={searchInput.destination}
+                waypoints={searchInput.waypoints}
+                selectedRouteType={selectedRouteType}
+                multiRoute={multiRoute}
+                routeRecommendation={routeRecommendation}
+              />
+            </div>
           )}
         </div>
       )}

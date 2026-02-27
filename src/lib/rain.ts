@@ -1,6 +1,8 @@
-import { BaseRouteType, RouteInfoWithType, LatLng } from '@/types';
+import { BaseRouteType, RouteInfoWithType, LatLng, Waypoint, AvoidArea } from '@/types';
 import { fetchWeatherForPoints } from '@/lib/weather';
 import { getCongestionInfo } from '@/lib/traffic';
+import { calculateRoute } from '@/lib/route';
+import { generateCirclePolygon } from '@/lib/routePreference';
 
 /**
  * WMO天気コードの雨深刻度重み（0〜2.0）
@@ -39,14 +41,15 @@ export function rainSeverityWeight(weatherCode: number): number {
 }
 
 /**
- * ルート上から均等に6地点をサンプリングし、渋滞考慮の到着時刻を付与する
+ * ルート上から均等にサンプリングし、渋滞考慮の到着時刻を付与する
  */
 export function sampleRoutePoints(
   route: RouteInfoWithType,
   departureTime: string,
-  baseRouteType: BaseRouteType
+  baseRouteType: BaseRouteType,
+  sampleCount: number = 6
 ): { position: LatLng; targetTime: string }[] {
-  const SAMPLE_COUNT = 6;
+  const SAMPLE_COUNT = sampleCount;
   const geometry = route.geometry;
   if (geometry.length < 2) return [];
 
@@ -121,67 +124,92 @@ export function sampleRoutePoints(
   return points;
 }
 
-export interface RainAnalysisResult {
-  bestRouteType: BaseRouteType;
-  scores: Record<BaseRouteType, number>;
-}
+const RAIN_SAMPLE_COUNT = 20;
+const RAIN_SCORE_THRESHOLD = 0.3;
+const RAIN_AVOID_RADIUS_KM = 15;
 
 /**
- * 全ルートの天気を並列取得し、レインスコアを算出して最良ルートを返す
+ * 最速ルートをベースに、雨区間を回避するリルートを生成する
+ *
+ * 1. 最速ルート上を20点サンプリングし天気を取得
+ * 2. 雨スコアが閾値を超える地点をクラスタリング
+ * 3. 各クラスタの重心に回避ポリゴン（半径15km）を生成
+ * 4. Valhalla で回避ポリゴン付きの再ルーティング
+ * 5. 雨なし → 最速ルートコピー / Valhalla失敗 → 最速ルートコピー
  */
-export async function analyzeRainAvoidance(
-  routes: Record<BaseRouteType, RouteInfoWithType | null>,
+export async function generateRainAvoidRoute(
+  fastestRoute: RouteInfoWithType,
+  origin: LatLng,
+  destination: LatLng,
+  waypoints: Waypoint[],
+  existingAvoidAreas: AvoidArea[],
   departureTime: string
-): Promise<RainAnalysisResult> {
-  const baseTypes: BaseRouteType[] = ['fastest', 'no_highway', 'scenic'];
-  const availableTypes = baseTypes.filter((t) => routes[t] !== null);
+): Promise<RouteInfoWithType> {
+  // 1. 最速ルート上を20点サンプリングし天気を取得
+  const samplePoints = sampleRoutePoints(fastestRoute, departureTime, 'fastest', RAIN_SAMPLE_COUNT);
+  if (samplePoints.length === 0) {
+    return { ...fastestRoute, routeType: 'rain_avoid', baseRouteType: 'fastest' };
+  }
 
-  // 各ルートのサンプル地点を準備
-  const routeSamples = availableTypes.map((type) => ({
-    type,
-    points: sampleRoutePoints(routes[type]!, departureTime, type),
-  }));
+  const weatherResults = await fetchWeatherForPoints(samplePoints);
 
-  // 全ルートの天気を並列取得
-  const allPoints = routeSamples.flatMap((rs) => rs.points);
-  const allWeather = await fetchWeatherForPoints(allPoints);
-
-  // ルートごとにスコアを算出
-  const scores: Record<string, number> = {};
-  let offset = 0;
-
-  for (const rs of routeSamples) {
-    let score = 0;
-    for (let i = 0; i < rs.points.length; i++) {
-      const weather = allWeather[offset + i];
-      if (weather) {
-        // 降水確率ベーススコア（0〜1）
-        const precipScore = weather.precipitationProbability / 100;
-        // WMO天気コードの深刻度重み
-        const severity = rainSeverityWeight(weather.weatherCode);
-        // 複合スコア: 降水確率 + 深刻度（深刻度を重視）
-        score += precipScore * 0.4 + severity * 0.6;
+  // 2. 各地点の雨スコアを算出し、閾値超えの地点をマーク
+  const rainIndices: number[] = [];
+  for (let i = 0; i < samplePoints.length; i++) {
+    const weather = weatherResults[i];
+    if (weather) {
+      const precipScore = weather.precipitationProbability / 100;
+      const severity = rainSeverityWeight(weather.weatherCode);
+      const score = precipScore * 0.4 + severity * 0.6;
+      if (score > RAIN_SCORE_THRESHOLD) {
+        rainIndices.push(i);
       }
     }
-    scores[rs.type] = score;
-    offset += rs.points.length;
   }
 
-  // 最もスコアが低い（雨が少ない）ルートを選択
-  let bestType = availableTypes[0];
-  let bestScore = scores[bestType];
-  for (const type of availableTypes) {
-    if (scores[type] < bestScore) {
-      bestScore = scores[type];
-      bestType = type;
+  // 雨なし → 最速ルートをそのままコピー
+  if (rainIndices.length === 0) {
+    return { ...fastestRoute, routeType: 'rain_avoid', baseRouteType: 'fastest' };
+  }
+
+  // 3. 隣接する雨地点をクラスタにまとめる
+  const clusters: number[][] = [];
+  let currentCluster: number[] = [rainIndices[0]];
+
+  for (let i = 1; i < rainIndices.length; i++) {
+    if (rainIndices[i] - rainIndices[i - 1] <= 1) {
+      currentCluster.push(rainIndices[i]);
+    } else {
+      clusters.push(currentCluster);
+      currentCluster = [rainIndices[i]];
     }
   }
+  clusters.push(currentCluster);
 
-  const fullScores: Record<BaseRouteType, number> = {
-    fastest: scores['fastest'] ?? Infinity,
-    no_highway: scores['no_highway'] ?? Infinity,
-    scenic: scores['scenic'] ?? Infinity,
-  };
+  // 4. 各クラスタの重心座標に回避ポリゴンを生成
+  const rainAvoidAreas: AvoidArea[] = clusters.map((cluster) => {
+    let sumLat = 0;
+    let sumLng = 0;
+    for (const idx of cluster) {
+      sumLat += samplePoints[idx].position.lat;
+      sumLng += samplePoints[idx].position.lng;
+    }
+    return {
+      center: { lat: sumLat / cluster.length, lng: sumLng / cluster.length },
+      radiusKm: RAIN_AVOID_RADIUS_KM,
+      label: '雨回避',
+    };
+  });
 
-  return { bestRouteType: bestType, scores: fullScores };
+  // 既存の回避エリアとマージ
+  const mergedAvoidAreas = [...existingAvoidAreas, ...rainAvoidAreas];
+
+  // 5. Valhalla で再ルーティング
+  try {
+    const rerouted = await calculateRoute(origin, destination, waypoints, 'fastest', mergedAvoidAreas);
+    return { ...rerouted, routeType: 'rain_avoid', baseRouteType: 'fastest' };
+  } catch {
+    // Valhalla失敗 → 最速ルートにフォールバック
+    return { ...fastestRoute, routeType: 'rain_avoid', baseRouteType: 'fastest' };
+  }
 }

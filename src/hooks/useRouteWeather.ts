@@ -5,7 +5,7 @@ import { SearchInput, RouteInfo, RoutePoint, RouteWeatherPoint, RouteType, BaseR
 import { calculateMultiRoute, extractRoutePoints, attachTrafficEstimate, computeCongestionSegments, computeRouteRecommendation, resolveTabRoute } from '@/lib/route';
 import { fetchWeatherForPoints } from '@/lib/weather';
 import { reverseGeocodeShortName } from '@/lib/geocode';
-import { analyzeRainAvoidance } from '@/lib/rain';
+import { generateRainAvoidRoute } from '@/lib/rain';
 import { calculateCurvatureScore, getCurvatureRating } from '@/lib/routeAnalysis';
 import { fetchElevationGain } from '@/lib/elevation';
 
@@ -208,26 +208,23 @@ export function useRouteWeather(): UseRouteWeatherReturn {
         });
       })().catch(() => {});
 
-      // バックグラウンドで雨分析を実行（2ルート以上利用可能な場合のみ）
-      if (availableRoutes.length >= 2) {
+      // バックグラウンドで雨回避ルートを生成（最速ルートがある場合のみ）
+      if (result.fastest) {
         setIsAnalyzingRain(true);
-        analyzeRainAvoidance(result, departureTime)
-          .then((analysis) => {
-            const bestRoute = result[analysis.bestRouteType];
-            if (!bestRoute) return;
-            const rainAvoidRoute: RouteInfoWithType = {
-              ...bestRoute,
-              routeType: 'rain_avoid',
-              baseRouteType: analysis.bestRouteType,
-              rainScore: analysis.scores[analysis.bestRouteType],
-            };
+        generateRainAvoidRoute(
+          result.fastest,
+          input.origin!,
+          input.destination!,
+          input.waypoints,
+          input.avoidAreas,
+          departureTime
+        )
+          .then((rainRoute) => {
             setMultiRoute((prev) =>
-              prev ? { ...prev, rain_avoid: rainAvoidRoute } : prev
+              prev ? { ...prev, rain_avoid: rainRoute } : prev
             );
           })
-          .catch(() => {
-            // 雨分析失敗時は黙って無視
-          })
+          .catch(() => {})
           .finally(() => {
             setIsAnalyzingRain(false);
           });
