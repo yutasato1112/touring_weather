@@ -28,7 +28,6 @@ type MapClickMode = 'origin' | 'destination' | null;
 export default function Home() {
   const {
     routeInfo,
-    routePoints,
     weatherData,
     multiRoute,
     selectedRouteType,
@@ -150,7 +149,6 @@ export default function Home() {
       <div className="absolute inset-0">
         <MapView
           routeGeometry={routeInfo?.geometry}
-          routePoints={routePoints}
           onMapClick={handleMapClick}
           originMarker={originMarker}
           destinationMarker={destinationMarker}

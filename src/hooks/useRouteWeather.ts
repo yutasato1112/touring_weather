@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { SearchInput, RouteInfo, RoutePoint, RouteWeatherPoint, RouteType, BaseRouteType, MultiRouteResult, RouteInfoWithType, CongestionSegment, RouteRecommendation } from '@/types';
+import { SearchInput, RouteInfo, RoutePoint, RouteWeatherPoint, RouteType, BaseRouteType, MultiRouteResult, RouteInfoWithType, CongestionSegment, RouteRecommendation, RouteCharacteristics } from '@/types';
 import { calculateMultiRoute, extractRoutePoints, attachTrafficEstimate, computeCongestionSegments, computeRouteRecommendation, resolveTabRoute } from '@/lib/route';
 import { fetchWeatherForPoints } from '@/lib/weather';
 import { reverseGeocodeShortName } from '@/lib/geocode';
@@ -38,14 +38,15 @@ export function useRouteWeather(): UseRouteWeatherReturn {
   const [isAnalyzingRain, setIsAnalyzingRain] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Keep departureTime in ref for route type switching
+  // Keep departureTime and routeCharacteristics in ref for route type switching
   const departureTimeRef = useRef<string>('');
+  const routeCharacteristicsRef = useRef<RouteCharacteristics | undefined>(undefined);
 
   const clearError = useCallback(() => setError(null), []);
 
   const routeRecommendation = useMemo(() => {
     if (!multiRoute) return null;
-    return computeRouteRecommendation(multiRoute);
+    return computeRouteRecommendation(multiRoute, routeCharacteristicsRef.current);
   }, [multiRoute]);
 
   const fetchWeatherForRoute = useCallback(async (route: RouteInfoWithType, departureTime: string) => {
@@ -133,6 +134,7 @@ export function useRouteWeather(): UseRouteWeatherReturn {
 
     const departureTime = input.departureTime || new Date().toISOString();
     departureTimeRef.current = departureTime;
+    routeCharacteristicsRef.current = input.routeCharacteristics;
 
     try {
       // Calculate 3 route types in parallel
@@ -140,7 +142,8 @@ export function useRouteWeather(): UseRouteWeatherReturn {
         input.origin,
         input.destination,
         input.waypoints,
-        input.avoidAreas
+        input.avoidAreas,
+        input.routeCharacteristics
       );
 
       // 全ルートに渋滞予測を適用
@@ -162,7 +165,7 @@ export function useRouteWeather(): UseRouteWeatherReturn {
       }
 
       // 推薦を計算して初期ルートを選択
-      const recommendation = computeRouteRecommendation(result);
+      const recommendation = computeRouteRecommendation(result, input.routeCharacteristics);
       const initialType: RouteType = availableRoutes.includes('fastest') ? 'fastest' : availableRoutes[0];
       setSelectedRouteTypeState(initialType);
       setIsLoadingRoute(false);

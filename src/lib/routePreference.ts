@@ -21,32 +21,56 @@ const ROUTE_KEYWORDS: RouteKeyword[] = [
   // === 高速道路 ===
   {
     names: ['東名', '東名高速', '東名高速道路'],
-    waypoints: [{ lat: 35.3192, lng: 139.2700 }], // 海老名SA付近
+    waypoints: [
+      { lat: 35.4590, lng: 139.4430 }, // 横浜町田IC付近
+      { lat: 34.9740, lng: 138.3890 }, // 静岡IC付近
+      { lat: 35.0820, lng: 137.1580 }, // 豊田JCT付近
+    ],
     label: '東名高速',
   },
   {
     names: ['新東名', '新東名高速', '新東名高速道路'],
-    waypoints: [{ lat: 35.1500, lng: 138.9000 }], // 新東名 静岡付近
+    waypoints: [
+      { lat: 35.3700, lng: 139.2600 }, // 厚木南IC付近
+      { lat: 35.0100, lng: 138.3200 }, // 新静岡IC付近
+      { lat: 34.9400, lng: 137.5600 }, // 浜松いなさJCT付近
+    ],
     label: '新東名高速',
   },
   {
     names: ['中央道', '中央自動車道', '中央高速'],
-    waypoints: [{ lat: 35.6600, lng: 138.5700 }], // 甲府付近
+    waypoints: [
+      { lat: 35.6560, lng: 139.3190 }, // 八王子JCT付近
+      { lat: 35.6200, lng: 138.5100 }, // 甲府昭和IC付近
+      { lat: 35.5100, lng: 137.8200 }, // 飯田IC付近
+    ],
     label: '中央自動車道',
   },
   {
     names: ['関越', '関越道', '関越自動車道'],
-    waypoints: [{ lat: 36.3900, lng: 139.0600 }], // 渋川伊香保付近
+    waypoints: [
+      { lat: 35.9320, lng: 139.3930 }, // 鶴ヶ島JCT付近
+      { lat: 36.4900, lng: 139.0100 }, // 渋川伊香保IC付近
+      { lat: 36.9300, lng: 138.8100 }, // 湯沢IC付近
+    ],
     label: '関越自動車道',
   },
   {
     names: ['東北道', '東北自動車道'],
-    waypoints: [{ lat: 36.3200, lng: 139.8200 }], // 佐野付近
+    waypoints: [
+      { lat: 36.3200, lng: 139.7800 }, // 佐野SA付近
+      { lat: 36.5600, lng: 139.8800 }, // 宇都宮IC付近
+      { lat: 37.0200, lng: 140.0200 }, // 那須IC付近
+    ],
     label: '東北自動車道',
   },
   {
     names: ['常磐道', '常磐自動車道'],
-    waypoints: [{ lat: 35.8300, lng: 139.8700 }], // 三郷JCT付近（常磐道の戦略的接続点）
+    waypoints: [
+      { lat: 35.8300, lng: 139.8700 }, // 三郷JCT付近
+      { lat: 36.0800, lng: 140.1100 }, // つくばJCT付近
+      { lat: 36.3700, lng: 140.4500 }, // 水戸IC付近
+    ],
     label: '常磐自動車道',
   },
   {
@@ -56,12 +80,19 @@ const ROUTE_KEYWORDS: RouteKeyword[] = [
   },
   {
     names: ['名神', '名神高速', '名神高速道路'],
-    waypoints: [{ lat: 35.2500, lng: 136.8600 }], // 名古屋付近
+    waypoints: [
+      { lat: 35.2600, lng: 136.9400 }, // 小牧JCT付近
+      { lat: 35.3700, lng: 136.4700 }, // 関ヶ原IC付近
+      { lat: 34.9600, lng: 135.7600 }, // 京都南IC付近
+    ],
     label: '名神高速',
   },
   {
     names: ['新名神', '新名神高速', '新名神高速道路'],
-    waypoints: [{ lat: 34.9500, lng: 136.4000 }], // 亀山付近
+    waypoints: [
+      { lat: 34.8600, lng: 136.3700 }, // 亀山JCT付近
+      { lat: 34.9200, lng: 136.1800 }, // 甲南IC付近
+    ],
     label: '新名神高速',
   },
   {
@@ -76,7 +107,11 @@ const ROUTE_KEYWORDS: RouteKeyword[] = [
   },
   {
     names: ['上信越道', '上信越自動車道'],
-    waypoints: [{ lat: 36.3300, lng: 138.1800 }], // 軽井沢付近
+    waypoints: [
+      { lat: 36.2500, lng: 139.0700 }, // 藤岡JCT付近
+      { lat: 36.3300, lng: 138.6300 }, // 軽井沢IC付近
+      { lat: 36.6300, lng: 138.2100 }, // 長野IC付近
+    ],
     label: '上信越自動車道',
   },
   {
@@ -86,7 +121,11 @@ const ROUTE_KEYWORDS: RouteKeyword[] = [
   },
   {
     names: ['北陸道', '北陸自動車道'],
-    waypoints: [{ lat: 36.7600, lng: 137.2100 }], // 富山付近
+    waypoints: [
+      { lat: 35.3800, lng: 136.2700 }, // 米原JCT付近
+      { lat: 36.0600, lng: 136.2200 }, // 福井IC付近
+      { lat: 36.7000, lng: 137.2100 }, // 富山IC付近
+    ],
     label: '北陸自動車道',
   },
   {
@@ -111,12 +150,19 @@ const ROUTE_KEYWORDS: RouteKeyword[] = [
   },
   {
     names: ['伊勢湾岸道', '伊勢湾岸', '伊勢湾岸自動車道'],
-    waypoints: [{ lat: 35.0300, lng: 136.8500 }], // 東海付近
+    waypoints: [
+      { lat: 35.0500, lng: 137.0600 }, // 豊田東JCT付近
+      { lat: 35.0100, lng: 136.8700 }, // 東海IC付近
+    ],
     label: '伊勢湾岸自動車道',
   },
   {
     names: ['山陽道', '山陽自動車道'],
-    waypoints: [{ lat: 34.6700, lng: 133.9200 }], // 岡山付近
+    waypoints: [
+      { lat: 34.8000, lng: 135.1000 }, // 神戸JCT付近
+      { lat: 34.6700, lng: 133.9200 }, // 岡山IC付近
+      { lat: 34.4500, lng: 132.4600 }, // 広島IC付近
+    ],
     label: '山陽自動車道',
   },
 
@@ -261,13 +307,13 @@ const ROUTE_KEYWORDS: RouteKeyword[] = [
 ];
 
 /** 出発地/目的地との近接フィルタの閾値 (km) */
-const PROXIMITY_THRESHOLD_KM = 15;
+export const PROXIMITY_THRESHOLD_KM = 15;
 
 /**
  * 2点間の距離を簡易計算する (km)
  * Haversine公式
  */
-function haversineDistance(a: LatLng, b: LatLng): number {
+export function haversineDistance(a: LatLng, b: LatLng): number {
   const R = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
   const dLng = ((b.lng - a.lng) * Math.PI) / 180;
@@ -279,8 +325,9 @@ function haversineDistance(a: LatLng, b: LatLng): number {
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-/** 回避ポリゴンのデフォルト半径 (km) */
-const DEFAULT_AVOID_RADIUS_KM = 25;
+/** 回避ポリゴンのデフォルト半径 (km)
+ * Valhalla の exclude_polygons 周長上限は 100km → 半径 ≈ 15.9km */
+export const DEFAULT_AVOID_RADIUS_KM = 15;
 
 /** 否定表現パターン（マッチしたら回避エリアとして扱う） */
 const NEGATIVE_PATTERNS: RegExp[] = [
@@ -333,7 +380,7 @@ const LOOP_PATTERNS: RegExp[] = [
 ];
 
 /** 周回ロケーション定義 */
-interface LoopLocation {
+export interface LoopLocation {
   names: string[];
   center: LatLng;
   /** 円形生成用の半径 (km) — perimeterPoints がある場合は不要 */
@@ -345,7 +392,7 @@ interface LoopLocation {
   label: string;
 }
 
-const LOOP_LOCATIONS: LoopLocation[] = [
+export const LOOP_LOCATIONS: LoopLocation[] = [
   // --- 湖 ---
   {
     names: ['琵琶湖', 'びわ湖', 'びわこ', 'ビワイチ'],
@@ -544,7 +591,7 @@ export function hasLoopIntent(text: string): boolean {
 /**
  * 中心座標から等間隔の円形経由地を生成する
  */
-function generateCircularWaypoints(
+export function generateCircularWaypoints(
   center: LatLng,
   radiusKm: number,
   numPoints: number = 6
@@ -576,7 +623,7 @@ function bearing(from: LatLng, to: LatLng): number {
 /**
  * origin に最も近い周囲点を起点として、進入方向に自然な順序で並べる
  */
-function orderPerimeterFromOrigin(
+export function orderPerimeterFromOrigin(
   perimeterPoints: LatLng[],
   origin: LatLng
 ): LatLng[] {
@@ -623,7 +670,7 @@ function orderPerimeterFromOrigin(
 /**
  * 周回辞書からロケーションを検索する
  */
-function findLoopLocation(keyword: string): LoopLocation | null {
+export function findLoopLocation(keyword: string): LoopLocation | null {
   // 完全一致
   for (const loc of LOOP_LOCATIONS) {
     for (const name of loc.names) {
@@ -760,9 +807,50 @@ function findInDictionary(keyword: string): RouteKeyword | null {
 }
 
 /**
+ * ウェイポイント配列を origin→destination 軸への射影でフィルタする。
+ * 射影値が -0.1〜1.1 の範囲（ルート区間内＋少しマージン）にあるものだけを残す。
+ * 高速道路の複数ウェイポイントから、出発地→目的地の区間に該当するものだけを選ぶ。
+ */
+export function filterWaypointsByAxis(
+  waypoints: LatLng[],
+  origin: LatLng,
+  destination: LatLng
+): LatLng[] {
+  const dx = destination.lng - origin.lng;
+  const dy = destination.lat - origin.lat;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return waypoints;
+
+  return waypoints.filter((wp) => {
+    const proj = ((wp.lat - origin.lat) * dy + (wp.lng - origin.lng) * dx) / lenSq;
+    return proj >= -0.1 && proj <= 1.1;
+  });
+}
+
+/**
+ * 高速道路名から辞書のマルチポイントウェイポイントを返す。
+ * findInDictionary() と同じ名前照合ロジック（完全一致→最長部分一致→最短名部分一致）を使用。
+ * origin/destination が渡された場合、ルート区間内のウェイポイントのみに絞り込む。
+ * マッチした場合は LatLng[] を返し、マッチしない場合は null を返す。
+ */
+export function expandHighwayWaypoints(
+  placeName: string,
+  origin?: LatLng,
+  destination?: LatLng
+): LatLng[] | null {
+  const entry = findInDictionary(placeName);
+  if (!entry) return null;
+  if (origin && destination && entry.waypoints.length > 1) {
+    const filtered = filterWaypointsByAxis(entry.waypoints, origin, destination);
+    return filtered.length > 0 ? filtered : entry.waypoints.slice(0, 1);
+  }
+  return entry.waypoints;
+}
+
+/**
  * 出発地→目的地の軸上にウェイポイントを射影してソートする
  */
-function sortWaypointsByProjection(
+export function sortWaypointsByProjection(
   waypoints: Waypoint[],
   origin: LatLng,
   destination: LatLng
@@ -875,7 +963,12 @@ export async function resolveRoutePreference(
       // 肯定 → 経由地ウェイポイントとして解決
       const entry = findInDictionary(keyword);
       if (entry) {
-        for (const wp of entry.waypoints) {
+        // 複数ウェイポイントの場合、origin→destination 区間内のものだけに絞る
+        const wps = entry.waypoints.length > 1
+          ? filterWaypointsByAxis(entry.waypoints, origin, destination)
+          : entry.waypoints;
+        const effectiveWps = wps.length > 0 ? wps : entry.waypoints.slice(0, 1);
+        for (const wp of effectiveWps) {
           resolvedWaypoints.push({ position: wp, label: entry.label });
         }
       } else {

@@ -70,13 +70,15 @@ function decodePolyline6(encoded: string): [number, number][] {
 
 /** 429リトライ付きでValhalla APIにリクエスト */
 async function fetchWithRetry(
-  valhallaBody: Record<string, unknown>
+  valhallaBody: Record<string, unknown>,
+  maxRetries: number = 3
 ): Promise<Response & { ok: boolean; status: number }> {
   const requestBody = JSON.stringify(valhallaBody);
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (attempt > 0) {
-      await new Promise((r) => setTimeout(r, 1000 * attempt));
+      // リトライ間隔: 1.5秒, 3秒, 4.5秒...
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
     }
 
     const response = await fetch(VALHALLA_ENDPOINT, {
@@ -89,7 +91,7 @@ async function fetchWithRetry(
       signal: AbortSignal.timeout(15000),
     });
 
-    if (response.status === 429 && attempt < 2) continue;
+    if (response.status === 429 && attempt < maxRetries - 1) continue;
     return response;
   }
 
@@ -156,11 +158,13 @@ function pickCurviest(candidates: RouteCandidate[]): RouteCandidate {
 }
 
 /** 通常ルート（fastest / no_highway）のレスポンスハンドラ */
-async function handleStandardResponse(response: Response): Promise<NextResponse> {
+async function handleStandardResponse(response: Response, locations?: { lat: number; lon: number }[]): Promise<NextResponse> {
   if (response.status === 429) {
     return NextResponse.json({ error: 'Valhalla rate limited' }, { status: 502 });
   }
   if (!response.ok) {
+    const errBody = await response.text().catch(() => '');
+    console.error(`Valhalla ${response.status}:`, errBody.slice(0, 300), 'locations:', JSON.stringify(locations));
     return NextResponse.json({ error: `Valhalla API error: ${response.status}` }, { status: 502 });
   }
 
@@ -268,7 +272,7 @@ function generateDetourWaypoints(
 async function handleScenicRoute(
   locations: { lat: number; lon: number; type?: string }[],
   body: ValhallaRouteRequest,
-  excludePolygons?: { lat: number; lon: number }[][]
+  excludePolygons?: [number, number][][]
 ): Promise<NextResponse> {
   const allCandidates: RouteCandidate[] = [];
   const numAlternates = body.alternates ?? 2;
@@ -294,11 +298,16 @@ async function handleScenicRoute(
     alternates: numAlternates,
   };
 
+  // 429が連続したら以降の戦略をスキップするためのフラグ
+  let rateLimited = false;
+
   const motoResult = await fetchWithRetry(motoBody);
 
   if (motoResult.ok) {
     allCandidates.push(...await extractCandidates(motoResult));
-  } else if (motoResult.status !== 429) {
+  } else if (motoResult.status === 429) {
+    rateLimited = true;
+  } else {
     // motorcycle非対応 → auto で高速回避フォールバック
     const fallbackBody: Record<string, unknown> = {
       locations,
@@ -313,82 +322,98 @@ async function handleScenicRoute(
       alternates: numAlternates,
     };
     const fallbackResult = await fetchWithRetry(fallbackBody);
-    allCandidates.push(...await extractCandidates(fallbackResult));
+    if (fallbackResult.status === 429) rateLimited = true;
+    else allCandidates.push(...await extractCandidates(fallbackResult));
   }
 
   // 戦略2: 最短距離ルート（山を迂回せず峠を直行 → ワインディングになりやすい）
-  await new Promise((r) => setTimeout(r, 300));
-  const shortestBody: Record<string, unknown> = {
-    locations,
-    costing: 'auto',
-    costing_options: {
-      auto: {
-        use_highways: 0,
-        use_tolls: body.useTolls ?? 0.5,
-        shortest: true,
-      },
-    },
-    ...baseOptions,
-    alternates: numAlternates,
-  };
-
-  const shortestResult = await fetchWithRetry(shortestBody);
-  if (shortestResult.ok) {
-    allCandidates.push(...await extractCandidates(shortestResult));
-  }
-
-  // 戦略3: 長距離向け迂回ルート（中間地点をオフセットして山道を強制通過）
-  const origin = locations[0];
-  const dest = locations[locations.length - 1];
-  const detourSets = generateDetourWaypoints(origin, dest);
-
-  for (const detourWps of detourSets) {
-    await new Promise((r) => setTimeout(r, 300));
-
-    // ユーザー経由地 + オフセット経由地を origin からの距離順でソート
-    const userWaypoints = locations.slice(1, -1);
-    const allWaypoints = [
-      ...userWaypoints,
-      ...detourWps.map((wp) => ({ lat: wp.lat, lon: wp.lon, type: 'through' as const })),
-    ];
-    allWaypoints.sort((a, b) => {
-      const cosLat = Math.cos(origin.lat * Math.PI / 180);
-      const da = (a.lat - origin.lat) ** 2 + ((a.lon - origin.lon) * cosLat) ** 2;
-      const db = (b.lat - origin.lat) ** 2 + ((b.lon - origin.lon) * cosLat) ** 2;
-      return da - db;
-    });
-
-    const detourBody: Record<string, unknown> = {
-      locations: [origin, ...allWaypoints, dest],
-      costing: 'motorcycle',
+  if (!rateLimited) {
+    await new Promise((r) => setTimeout(r, 800));
+    const shortestBody: Record<string, unknown> = {
+      locations,
+      costing: 'auto',
       costing_options: {
-        motorcycle: {
+        auto: {
           use_highways: 0,
           use_tolls: body.useTolls ?? 0.5,
-          ...(body.useTrails !== undefined && { use_trails: body.useTrails }),
+          shortest: true,
         },
       },
       ...baseOptions,
+      alternates: numAlternates,
     };
 
-    const result = await fetchWithRetry(detourBody);
-    if (result.ok) {
-      allCandidates.push(...await extractCandidates(result));
-    } else if (result.status !== 429) {
-      // motorcycle非対応フォールバック
-      const fbBody: Record<string, unknown> = {
-        ...detourBody,
-        costing: 'auto',
+    const shortestResult = await fetchWithRetry(shortestBody, 2);
+    if (shortestResult.ok) {
+      allCandidates.push(...await extractCandidates(shortestResult));
+    } else if (shortestResult.status === 429) {
+      rateLimited = true;
+    }
+  }
+
+  // 戦略3: 長距離向け迂回ルート（中間地点をオフセットして山道を強制通過）
+  // 既に候補がある場合 or レート制限中はスキップ
+  if (!rateLimited) {
+    const origin = locations[0];
+    const dest = locations[locations.length - 1];
+    const detourSets = generateDetourWaypoints(origin, dest);
+
+    for (const detourWps of detourSets) {
+      if (rateLimited) break;
+      // 既に十分な候補があればスキップ
+      if (allCandidates.length >= 3) break;
+
+      await new Promise((r) => setTimeout(r, 800));
+
+      // ユーザー経由地 + オフセット経由地を origin からの距離順でソート
+      const userWaypoints = locations.slice(1, -1);
+      const allWaypoints = [
+        ...userWaypoints,
+        ...detourWps.map((wp) => ({ lat: wp.lat, lon: wp.lon, type: 'through' as const })),
+      ];
+      allWaypoints.sort((a, b) => {
+        const cosLat = Math.cos(origin.lat * Math.PI / 180);
+        const da = (a.lat - origin.lat) ** 2 + ((a.lon - origin.lon) * cosLat) ** 2;
+        const db = (b.lat - origin.lat) ** 2 + ((b.lon - origin.lon) * cosLat) ** 2;
+        return da - db;
+      });
+
+      const detourBody: Record<string, unknown> = {
+        locations: [origin, ...allWaypoints, dest],
+        costing: 'motorcycle',
         costing_options: {
-          auto: { use_highways: 0, use_tolls: body.useTolls ?? 0.5 },
+          motorcycle: {
+            use_highways: 0,
+            use_tolls: body.useTolls ?? 0.5,
+            ...(body.useTrails !== undefined && { use_trails: body.useTrails }),
+          },
         },
+        ...baseOptions,
       };
-      const fbResult = await fetchWithRetry(fbBody);
-      allCandidates.push(...await extractCandidates(fbResult));
+
+      const result = await fetchWithRetry(detourBody, 2);
+      if (result.ok) {
+        allCandidates.push(...await extractCandidates(result));
+      } else if (result.status === 429) {
+        rateLimited = true;
+      } else {
+        // motorcycle非対応フォールバック
+        const fbBody: Record<string, unknown> = {
+          ...detourBody,
+          costing: 'auto',
+          costing_options: {
+            auto: { use_highways: 0, use_tolls: body.useTolls ?? 0.5 },
+          },
+        };
+        const fbResult = await fetchWithRetry(fbBody, 2);
+        if (fbResult.status === 429) rateLimited = true;
+        else allCandidates.push(...await extractCandidates(fbResult));
+      }
     }
   }
 
   if (allCandidates.length === 0) {
+    console.error('Scenic: no candidates found. locations:', JSON.stringify(locations));
     return NextResponse.json({ error: 'No route found' }, { status: 404 });
   }
 
@@ -420,9 +445,9 @@ export async function POST(request: NextRequest) {
 
     locations.push({ lat: body.destination.lat, lon: body.destination.lng });
 
-    // 回避ポリゴン: [lng, lat][][] → [{lat, lon}][] (Valhalla形式)
+    // 回避ポリゴン: [lng, lat][][] → そのまま Valhalla に渡す（Valhalla は [lng, lat] 配列形式を期待）
     const excludePolygons = body.excludePolygons?.length
-      ? body.excludePolygons.map((ring) => ring.map(([lng, lat]) => ({ lat, lon: lng })))
+      ? body.excludePolygons
       : undefined;
 
     // ワインディング(scenic): デュアル戦略でカーブ度最高のルートを選択
@@ -450,7 +475,7 @@ export async function POST(request: NextRequest) {
     };
 
     const result = await fetchWithRetry(valhallaBody);
-    return await handleStandardResponse(result);
+    return await handleStandardResponse(result, locations);
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },

@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { SearchInput, Waypoint, LatLng, MultiRouteResult, RouteType, RouteRecommendation } from '@/types';
 import { geocodeSearch, GeocodeSuggestion } from '@/lib/geocode';
-import { resolveRoutePreference, hasLoopIntent } from '@/lib/routePreference';
+import { hasLoopIntent } from '@/lib/routePreference';
+import { resolveRoutePreferenceAI } from '@/lib/routePreferenceAI';
 import RouteComparison from './RouteComparison';
 
 interface SearchPanelProps {
@@ -215,6 +216,8 @@ export default function SearchPanel({
   routeRecommendation,
 }: SearchPanelProps) {
   const [isDesktop, setIsDesktop] = useState(true);
+  // AI解析結果の表示用（null = 未検索, true = AI, false = 辞書）
+  const [aiParsed, setAIParsed] = useState<boolean | null>(null);
 
   // Bottom sheet state (mobile)
   const [translateY, setTranslateY] = useState(0);
@@ -475,17 +478,25 @@ export default function SearchPanel({
       }
 
       if (input.routePreference.trim() && input.origin && input.destination) {
-        const resolved = await resolveRoutePreference(
+        const resolved = await resolveRoutePreferenceAI(
           input.routePreference,
           input.origin,
           input.destination,
           input.waypoints
         );
-        input = { ...input, waypoints: resolved.waypoints, avoidAreas: resolved.avoidAreas };
+        setAIParsed(resolved.isAIParsed);
+        input = {
+          ...input,
+          waypoints: resolved.waypoints,
+          avoidAreas: resolved.avoidAreas,
+          routeCharacteristics: resolved.routeCharacteristics,
+        };
         // 周回ルートのラベルが解決された場合、目的地テキストを更新
         if (resolved.isLoop && resolved.loopLabel) {
           input = { ...input, destinationText: input.originText + '（' + resolved.loopLabel + '）' };
         }
+      } else {
+        setAIParsed(null);
       }
 
       setSearchInput(input);
@@ -653,14 +664,20 @@ export default function SearchPanel({
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none">📝</span>
           <input
             type="text"
-            placeholder="例: 中央道経由、琵琶湖一周"
+            placeholder="例: 中央道経由、海沿いを走りたい"
             value={searchInput.routePreference}
-            onChange={(e) =>
-              setSearchInput({ ...searchInput, routePreference: e.target.value })
-            }
+            onChange={(e) => {
+              setSearchInput({ ...searchInput, routePreference: e.target.value });
+              setAIParsed(null);
+            }}
             className="w-full glass-input text-white pl-9 pr-3 py-3 rounded-xl text-sm"
           />
         </div>
+        {aiParsed !== null && (
+          <p className={`text-xs mt-1 ${aiParsed ? 'text-purple-400' : 'text-gray-500'}`}>
+            {aiParsed ? '✦ AI解析' : '⚙ 辞書解析'}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -126,6 +126,16 @@ export interface CongestionSegment {
   level: CongestionLevel;
 }
 
+/** 抽象的なルート特性（AI解析で抽出） */
+export interface RouteCharacteristics {
+  preferCoastal?: boolean;
+  preferMountain?: boolean;
+  preferScenic?: boolean;
+  preferRural?: boolean;
+  preferRiverside?: boolean;
+  preferForest?: boolean;
+}
+
 /** 検索フォームの入力値 */
 export interface SearchInput {
   origin: LatLng | null;
@@ -138,4 +148,6 @@ export interface SearchInput {
   routePreference: string;
   /** 回避エリア（routePreference の否定表現から自動生成） */
   avoidAreas: AvoidArea[];
+  /** 抽象的なルート特性（AI解析で抽出） */
+  routeCharacteristics?: RouteCharacteristics;
 }

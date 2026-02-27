@@ -1,12 +1,11 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { LatLng, RoutePoint, MultiRouteResult, RouteType, ROUTE_TYPE_COLORS, Waypoint, CongestionSegment, RouteRecommendation } from '@/types';
+import { LatLng, MultiRouteResult, RouteType, ROUTE_TYPE_COLORS, Waypoint, CongestionSegment, RouteRecommendation } from '@/types';
 import { CONGESTION_COLORS } from '@/lib/traffic';
 
 interface MapViewProps {
   routeGeometry?: [number, number][];
-  routePoints?: RoutePoint[];
   onMapClick?: (lat: number, lng: number) => void;
   originMarker?: { lat: number; lng: number } | null;
   destinationMarker?: { lat: number; lng: number } | null;
@@ -23,7 +22,6 @@ interface MapViewProps {
 
 export default function MapView({
   routeGeometry,
-  routePoints,
   onMapClick,
   originMarker,
   destinationMarker,
@@ -214,26 +212,6 @@ export default function MapView({
       {!multiRoute && routeLatLngs && (
         <Polyline positions={routeLatLngs} color="#3b82f6" weight={4} opacity={0.8} />
       )}
-
-      {/* Route points (weather waypoints) */}
-      {routePoints?.map((rp, i) => (
-        <CircleMarker
-          key={i}
-          center={[rp.position.lat, rp.position.lng]}
-          radius={6}
-          fillColor="#f59e0b"
-          fillOpacity={0.9}
-          color="#fff"
-          weight={2}
-        >
-          <Popup>
-            <div className="text-sm">
-              <p className="font-bold">{rp.distanceFromStart.toFixed(0)} km 地点</p>
-              <p>{new Date(rp.estimatedArrival).toLocaleString('ja-JP')}</p>
-            </div>
-          </Popup>
-        </CircleMarker>
-      ))}
 
       {/* Waypoint markers (purple) */}
       {waypoints?.map((wp, i) =>

@@ -1,4 +1,4 @@
-import { LatLng, RouteInfo, RouteInfoWithType, RoutePoint, RouteType, BaseRouteType, MultiRouteResult, Waypoint, CongestionSegment, CongestionLevel, RouteRecommendation, AvoidArea } from '@/types';
+import { LatLng, RouteInfo, RouteInfoWithType, RoutePoint, RouteType, BaseRouteType, MultiRouteResult, Waypoint, CongestionSegment, CongestionLevel, RouteRecommendation, AvoidArea, RouteCharacteristics } from '@/types';
 import { getCongestionInfo, calculateAdjustedDuration } from '@/lib/traffic';
 import { generateCirclePolygon } from '@/lib/routePreference';
 
@@ -95,13 +95,17 @@ export async function calculateMultiRoute(
   origin: LatLng,
   destination: LatLng,
   waypoints: Waypoint[] = [],
-  avoidAreas: AvoidArea[] = []
+  avoidAreas: AvoidArea[] = [],
+  routeCharacteristics?: RouteCharacteristics
 ): Promise<MultiRouteResult> {
   const routeTypes: BaseRouteType[] = ['fastest', 'no_highway', 'scenic'];
 
+  // RouteCharacteristicsによるパラメータ調整は推薦ロジック側で反映する
+  // （Valhallaのcosting optionに直接マップできない抽象概念のため）
+
   const results = await Promise.allSettled(
     routeTypes.map((type, i) =>
-      delay(i * 600).then(() => calculateRoute(origin, destination, waypoints, type, avoidAreas))
+      delay(i * 1000).then(() => calculateRoute(origin, destination, waypoints, type, avoidAreas))
     )
   );
 
@@ -313,12 +317,21 @@ export function computeCongestionSegments(
 }
 
 /**
- * 渋滞考慮後の所要時間でルート推薦を算出する
+ * Valhallaのベース所要時間でルート推薦を算出する
+ *
+ * adjustedDuration（渋滞考慮）ではなく totalDuration（Valhallaのベース時間）で比較する。
+ * 理由: adjustedDuration はルート種別ごとに異なる渋滞テーブルを適用するため、
+ * 「fastest」ルートに高速道路テーブル（低倍率）が適用され、実際は一般道なのに
+ * 不当に早く見える問題がある。Valhallaは実際の道路種別・速度を考慮した正確な
+ * 所要時間を返すため、推薦比較にはこちらを使う。
  */
-export function computeRouteRecommendation(multiRoute: MultiRouteResult): RouteRecommendation {
+export function computeRouteRecommendation(
+  multiRoute: MultiRouteResult,
+  routeCharacteristics?: RouteCharacteristics
+): RouteRecommendation {
   const getDuration = (route: RouteInfoWithType | null): number | null => {
     if (!route) return null;
-    return route.adjustedDuration ?? route.totalDuration;
+    return route.totalDuration;
   };
 
   // 全体で最速のルートを決定
@@ -331,6 +344,24 @@ export function computeRouteRecommendation(multiRoute: MultiRouteResult): RouteR
     if (d !== null && d < fastestDuration) {
       fastestDuration = d;
       fastestType = type;
+    }
+  }
+
+  // RouteCharacteristics による推薦調整
+  if (routeCharacteristics) {
+    const { preferCoastal, preferMountain, preferScenic, preferRural } = routeCharacteristics;
+
+    // scenic/mountain/coastal を好む場合: scenic ルートがあれば最速タブにも scenic を推薦
+    if ((preferScenic || preferMountain || preferCoastal) && multiRoute.scenic) {
+      fastestType = 'scenic';
+    }
+
+    // rural/coastal を好む場合: 高速道路を避ける傾向
+    if ((preferRural || preferCoastal) && multiRoute.no_highway) {
+      // no_highway が存在する場合、fastest タブの推薦を no_highway に
+      if (!preferScenic && !preferMountain) {
+        fastestType = 'no_highway';
+      }
     }
   }
 
