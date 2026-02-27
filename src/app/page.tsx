@@ -162,15 +162,17 @@ export default function Home() {
         />
       </div>
 
-      {/* Route calculation loading overlay */}
-      {isLoadingRoute && (
-        <div className="absolute inset-0 z-[998] flex flex-col items-center justify-center bg-black/50 route-loading-overlay">
+      {/* Loading overlay — mobile: full-screen for all loading, desktop: route calc only */}
+      {(isDesktop ? isLoadingRoute : isLoading) && (
+        <div className={`absolute inset-0 flex flex-col items-center justify-center bg-black/50 route-loading-overlay ${isDesktop ? 'z-[998]' : 'z-[1002]'}`}>
           <div className="route-spinner">
             <div className="route-spinner-ring" />
             <div className="route-spinner-ring route-spinner-ring-2" />
             <span className="route-spinner-icon">🏍️</span>
           </div>
-          <p className="route-loading-text mt-5 text-sm font-medium tracking-wide">ルート計算中</p>
+          <p className="route-loading-text mt-5 text-sm font-medium tracking-wide">
+            {isLoadingRoute ? 'ルート計算中' : '天気を取得中'}
+          </p>
         </div>
       )}
 

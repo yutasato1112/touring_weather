@@ -2,6 +2,27 @@ import { LatLng, RouteInfo, RouteInfoWithType, RoutePoint, RouteType, BaseRouteT
 import { getCongestionInfo, calculateAdjustedDuration } from '@/lib/traffic';
 import { generateCirclePolygon } from '@/lib/routePreference';
 
+/**
+ * 出発時刻文字列を Date にパースする。
+ *
+ * datetime-local の値は "YYYY-MM-DDTHH:mm"（タイムゾーンなし）で、
+ * Chrome は new Date() でこれを UTC として解釈する場合がある（仕様上はローカル時間）。
+ * 本アプリは日本向けのため、タイムゾーン指定のない文字列は JST (UTC+9) として解釈する。
+ */
+export function parseDepartureTime(dt: string): Date {
+  // 既にタイムゾーン情報を含む場合はそのままパース
+  if (dt.includes('Z') || /[+-]\d{2}:\d{2}/.test(dt)) {
+    return new Date(dt);
+  }
+  // "YYYY-MM-DDTHH:mm" → JST として解釈
+  const m = dt.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (m) {
+    const utcMs = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+    return new Date(utcMs - 9 * 60 * 60 * 1000); // JST → UTC
+  }
+  return new Date(dt);
+}
+
 /** Valhalla ルート種別設定 */
 const VALHALLA_ROUTE_CONFIG: Record<BaseRouteType, {
   costing?: string;
@@ -148,7 +169,7 @@ export function extractRoutePoints(
   routeType: RouteType = 'fastest'
 ): RoutePoint[] {
   const points: RoutePoint[] = [];
-  const departure = new Date(departureTime);
+  const departure = parseDepartureTime(departureTime);
 
   const cumulativeDistances: number[] = [0];
   for (let i = 1; i < geometry.length; i++) {
@@ -232,7 +253,7 @@ export function attachTrafficEstimate(
   route: RouteInfoWithType,
   departureTime: string
 ): RouteInfoWithType {
-  const departure = new Date(departureTime);
+  const departure = parseDepartureTime(departureTime);
   const effectiveType = route.baseRouteType ?? route.routeType;
   const adjustedDuration = calculateAdjustedDuration(
     route.totalDuration,
@@ -256,7 +277,7 @@ export function computeCongestionSegments(
 ): CongestionSegment[] {
   if (geometry.length < 2) return [];
 
-  const departure = new Date(departureTime);
+  const departure = parseDepartureTime(departureTime);
 
   // 累積距離を計算
   const cumulativeDistances: number[] = [0];

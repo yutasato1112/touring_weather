@@ -1,7 +1,7 @@
 'use client';
 
 import { MultiRouteResult, RouteType, ROUTE_TYPE_LABELS, ROUTE_TYPE_COLORS, RouteRecommendation } from '@/types';
-import { resolveTabRoute } from '@/lib/route';
+import { resolveTabRoute, parseDepartureTime } from '@/lib/route';
 import { CONGESTION_LABELS, CONGESTION_COLORS, getCongestionInfo } from '@/lib/traffic';
 
 interface RouteComparisonProps {
@@ -26,7 +26,7 @@ function formatDistance(km: number): string {
 }
 
 function formatArrival(departureTime: string, durationSeconds: number): string {
-  const departure = new Date(departureTime);
+  const departure = parseDepartureTime(departureTime);
   const arrival = new Date(departure.getTime() + durationSeconds * 1000);
   return arrival.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
 }
@@ -116,7 +116,7 @@ export default function RouteComparison({
             const color = ROUTE_TYPE_COLORS[type];
             const displayDuration = route.adjustedDuration ?? route.totalDuration;
             const trafficType = route.baseRouteType ?? route.routeType;
-            const congestion = getCongestionInfo(new Date(departureTime), trafficType);
+            const congestion = getCongestionInfo(parseDepartureTime(departureTime), trafficType);
 
             return (
               <button
@@ -243,7 +243,7 @@ export default function RouteComparison({
                 </div>
               )}
               {(() => {
-                const congestion = getCongestionInfo(new Date(departureTime), trafficType);
+                const congestion = getCongestionInfo(parseDepartureTime(departureTime), trafficType);
                 const displayDuration = route.adjustedDuration ?? route.totalDuration;
                 return (
                   <>

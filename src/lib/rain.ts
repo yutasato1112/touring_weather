@@ -1,7 +1,7 @@
 import { BaseRouteType, RouteInfoWithType, LatLng, Waypoint, AvoidArea } from '@/types';
 import { fetchWeatherForPoints } from '@/lib/weather';
 import { getCongestionInfo } from '@/lib/traffic';
-import { calculateRoute } from '@/lib/route';
+import { calculateRoute, parseDepartureTime } from '@/lib/route';
 import { generateCirclePolygon } from '@/lib/routePreference';
 
 /**
@@ -53,7 +53,7 @@ export function sampleRoutePoints(
   const geometry = route.geometry;
   if (geometry.length < 2) return [];
 
-  const departure = new Date(departureTime);
+  const departure = parseDepartureTime(departureTime);
 
   // 累積距離を計算
   const cumulativeDistances: number[] = [0];

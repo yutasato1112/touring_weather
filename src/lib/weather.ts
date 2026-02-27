@@ -48,18 +48,86 @@ export function getWeatherEmoji(code: number): string {
   return '⛈️';
 }
 
-/** Date をローカル時間の YYYY-MM-DD 文字列にする */
-function localDateString(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 /** Date を JST (UTC+9) の YYYY-MM-DD 文字列にする（Open-Meteo の timezone=Asia/Tokyo に合わせる） */
 function toJSTDateString(d: Date): string {
   const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
   return jst.toISOString().split('T')[0];
+}
+
+/** Date を JST の時 (0-23) で返す */
+function toJSTHour(d: Date): number {
+  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return jst.getUTCHours();
+}
+
+/**
+ * Open-Meteo の JST 時刻文字列 "YYYY-MM-DDTHH:MM" を
+ * Date.UTC ベースのミリ秒に変換する。
+ */
+function omTimeToJSTMs(t: string): number {
+  const y = parseInt(t.slice(0, 4), 10);
+  const m = parseInt(t.slice(5, 7), 10) - 1;
+  const d = parseInt(t.slice(8, 10), 10);
+  const h = parseInt(t.slice(11, 13), 10);
+  return Date.UTC(y, m, d, h, 0, 0);
+}
+
+/**
+ * Open-Meteo の hourly.time 配列からターゲット時刻に最も近い index を返す。
+ * 完全一致 → 最近接マッチ（1時間以内）のフォールバック付き。
+ */
+function findClosestHourIndex(
+  hourlyTimes: string[],
+  targetDate: Date
+): number {
+  const targetJSTMs = targetDate.getTime() + 9 * 60 * 60 * 1000;
+  const targetDateStr = toJSTDateString(targetDate);
+  const targetHour = toJSTHour(targetDate);
+
+  // 1) 完全一致（日付 + 時）
+  for (let i = 0; i < hourlyTimes.length; i++) {
+    const t = hourlyTimes[i];
+    if (t.slice(0, 10) === targetDateStr && parseInt(t.slice(11, 13), 10) === targetHour) {
+      return i;
+    }
+  }
+
+  // 2) 最近接フォールバック（1時間以内）
+  let bestIndex = -1;
+  let bestDiff = Infinity;
+  for (let i = 0; i < hourlyTimes.length; i++) {
+    const omMs = omTimeToJSTMs(hourlyTimes[i]);
+    const diff = Math.abs(omMs - targetJSTMs);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIndex = i;
+    }
+  }
+  if (bestDiff <= 3600000) return bestIndex;
+  return -1;
+}
+
+/** 指定ms待つ */
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** 429 リトライ付き fetch（最大 maxRetries 回、指数バックオフ） */
+async function fetchWithRetry(
+  url: string,
+  maxRetries: number = 3,
+  baseDelayMs: number = 1500
+): Promise<Response> {
+  let lastResponse: Response | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      await delay(baseDelayMs * attempt);
+    }
+    const response = await fetch(url);
+    if (response.status !== 429) return response;
+    lastResponse = response;
+  }
+  return lastResponse!;
 }
 
 /**
@@ -71,31 +139,18 @@ export async function fetchWeatherForPoint(
 ): Promise<WeatherData | null> {
   try {
     const date = new Date(targetTime);
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toJSTDateString(date);
 
-    const params = new URLSearchParams({
-      latitude: position.lat.toFixed(4),
-      longitude: position.lng.toFixed(4),
-      hourly: 'temperature_2m,precipitation_probability,wind_speed_10m,weather_code',
-      start_date: dateStr,
-      end_date: dateStr,
-      timezone: 'Asia/Tokyo',
-    });
+    const url = `${OPEN_METEO_BASE_URL}?latitude=${position.lat.toFixed(4)}&longitude=${position.lng.toFixed(4)}&hourly=temperature_2m,precipitation_probability,wind_speed_10m,weather_code&start_date=${dateStr}&end_date=${dateStr}&timezone=Asia%2FTokyo`;
 
-    const response = await fetch(`${OPEN_METEO_BASE_URL}?${params}`);
+    const response = await fetchWithRetry(url);
     if (!response.ok) return null;
 
     const data = await response.json();
     const hourly = data.hourly;
     if (!hourly || !hourly.time) return null;
 
-    // Find the closest hour
-    const targetHour = date.getHours();
-    const index = hourly.time.findIndex((t: string) => {
-      const h = new Date(t).getHours();
-      return h === targetHour;
-    });
-
+    const index = findClosestHourIndex(hourly.time, date);
     if (index === -1) return null;
 
     const weatherCode = hourly.weather_code[index] ?? 0;
@@ -116,63 +171,56 @@ export async function fetchWeatherForPoint(
  * 複数地点の天気を一括取得する
  *
  * Open-Meteo のマルチロケーション API を使い、
- * N地点を1リクエストで取得する（地点ごとの個別リクエストを排除）。
- * 日付が複数日にまたがる場合は全日付範囲をカバーするリクエストを送る。
+ * N地点を1リクエストで取得する。
+ * 429 レート制限時はリトライ（個別フォールバックは 429 を増幅するため行わない）。
  */
 export async function fetchWeatherForPoints(
   points: { position: LatLng; targetTime: string }[]
 ): Promise<(WeatherData | null)[]> {
   if (points.length === 0) return [];
 
-  // 1地点の場合は単一リクエストで十分
+  // 1地点の場合は単一リクエスト
   if (points.length === 1) {
     const result = await fetchWeatherForPoint(points[0].position, points[0].targetTime);
     return [result];
   }
 
   try {
-    // 全地点の日付範囲を算出（JST基準: Open-Meteo の timezone パラメータと一致させる）
+    // 全地点の日付範囲を算出（JST基準）
     const dates = points.map((p) => new Date(p.targetTime));
     const minDate = new Date(Math.min(...dates.map((d) => d.getTime())));
     const maxDate = new Date(Math.max(...dates.map((d) => d.getTime())));
     const startDate = toJSTDateString(minDate);
     const endDate = toJSTDateString(maxDate);
 
-    // カンマ区切りの座標リスト
     const latitudes = points.map((p) => p.position.lat.toFixed(4)).join(',');
     const longitudes = points.map((p) => p.position.lng.toFixed(4)).join(',');
 
-    // URLSearchParams はカンマを %2C にエンコードするため手動で構築
     const url = `${OPEN_METEO_BASE_URL}?latitude=${latitudes}&longitude=${longitudes}&hourly=temperature_2m,precipitation_probability,wind_speed_10m,weather_code&start_date=${startDate}&end_date=${endDate}&timezone=Asia%2FTokyo`;
 
-    const response = await fetch(url);
+    // 429 リトライ付き（最大3回、1.5秒→3秒→4.5秒間隔）
+    const response = await fetchWithRetry(url);
     if (!response.ok) {
-      return fallbackIndividual(points);
+      // 429 以外のエラー → 個別フォールバック（順次実行）
+      if (response.status !== 429) {
+        return fallbackSequential(points);
+      }
+      // 429 でリトライ上限 → 空配列よりはnull配列を返す
+      return points.map(() => null);
     }
 
     const data = await response.json();
-
-    // マルチロケーション: 配列、単一: オブジェクト（ここには来ないが安全策）
     const locations = Array.isArray(data) ? data : [data];
 
     return points.map((point, i) => {
       try {
-        const location = locations[i];
+        const location = locations[Math.min(i, locations.length - 1)];
         if (!location?.hourly?.time) return null;
 
         const hourly = location.hourly;
         const targetDate = new Date(point.targetTime);
-        const targetHour = targetDate.getHours();
 
-        // Open-Meteo の time は JST（"2026-02-27T12:00" 形式）。
-        // getHours() はブラウザのローカル時間（日本ユーザー=JST）で比較。
-        // 複数日にまたがる場合があるため日付も比較する。
-        const targetLocalDate = localDateString(targetDate);
-        const index = hourly.time.findIndex((t: string) => {
-          const d = new Date(t);
-          return localDateString(d) === targetLocalDate && d.getHours() === targetHour;
-        });
-
+        const index = findClosestHourIndex(hourly.time, targetDate);
         if (index === -1) return null;
 
         const weatherCode = hourly.weather_code[index] ?? 0;
@@ -189,17 +237,20 @@ export async function fetchWeatherForPoints(
       }
     });
   } catch {
-    return fallbackIndividual(points);
+    return fallbackSequential(points);
   }
 }
 
 /**
- * 一括取得失敗時のフォールバック: 個別リクエストで並列取得
+ * フォールバック: 個別リクエストを順次実行（429 回避のため 300ms 間隔）
  */
-async function fallbackIndividual(
+async function fallbackSequential(
   points: { position: LatLng; targetTime: string }[]
 ): Promise<(WeatherData | null)[]> {
-  return Promise.all(
-    points.map((p) => fetchWeatherForPoint(p.position, p.targetTime))
-  );
+  const results: (WeatherData | null)[] = [];
+  for (let i = 0; i < points.length; i++) {
+    if (i > 0) await delay(300);
+    results.push(await fetchWeatherForPoint(points[i].position, points[i].targetTime));
+  }
+  return results;
 }
