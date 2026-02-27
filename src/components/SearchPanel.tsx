@@ -6,6 +6,7 @@ import { geocodeSearch, GeocodeSuggestion } from '@/lib/geocode';
 import { hasLoopIntent } from '@/lib/routePreference';
 import { resolveRoutePreferenceAI } from '@/lib/routePreferenceAI';
 import RouteComparison from './RouteComparison';
+import Logo from './Logo';
 
 interface SearchPanelProps {
   onSearch: (input: SearchInput) => void;
@@ -718,7 +719,7 @@ export default function SearchPanel({
       <div className="absolute top-4 left-4 z-[1000] w-80 max-w-[calc(100vw-2rem)]">
         <div className="glass-panel rounded-xl max-h-[calc(100vh-2rem)] overflow-y-auto">
           <div className="px-4 py-3 flex items-center justify-between text-white">
-            <h2 className="text-lg font-bold">🏍 Touring Weather</h2>
+            <h2 className="text-lg font-bold flex items-center gap-2"><Logo size={28} /> Touring Weather</h2>
           </div>
           <div className="px-4 pb-4">
             <form onSubmit={handleSubmit} className="space-y-3">
@@ -792,7 +793,7 @@ export default function SearchPanel({
           if (isCollapsed) setTranslateY(getSnapTranslateY('half'));
         }}
       >
-        <h2 className="text-base font-bold text-white">🏍 Touring Weather</h2>
+        <h2 className="text-base font-bold text-white flex items-center gap-2"><Logo size={24} /> Touring Weather</h2>
         {isCollapsed && (
           <span className="text-xs text-gray-400">▲ タップして展開</span>
         )}
